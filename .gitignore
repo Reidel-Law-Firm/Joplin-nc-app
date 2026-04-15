@@ -1,0 +1,11 @@
+# Node
+apps/joplinfiles/node_modules/
+
+# Docker local data
+docker/
+
+# OS
+.DS_Store
+Thumbs.db
+
+.vs/
