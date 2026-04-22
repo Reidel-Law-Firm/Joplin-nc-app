@@ -19,6 +19,8 @@
 
     /** Last directory we processed */
     var lastDir = '';
+    /** Debounce timer for navigation events */
+    var navDebounceTimer = null;
 
     // -------------------------------------------------------------------------
     // Helpers
@@ -155,6 +157,34 @@
     }
 
     // -------------------------------------------------------------------------
+    // Navigation detection — covers popstate (back/forward) AND
+    // pushState/replaceState (Nextcloud SPA internal folder navigation)
+    // -------------------------------------------------------------------------
+
+    function onNavigate() {
+        // Debounce: Vue Router may call replaceState several times in one
+        // navigation cycle; wait for it to settle before acting.
+        clearTimeout(navDebounceTimer);
+        navDebounceTimer = setTimeout(function () {
+            lastDir = '';        // force checkAndUpdate to treat this as a new dir
+            checkAndUpdate();
+        }, 50);
+    }
+
+    function patchHistoryApi() {
+        // Intercept SPA navigation that does NOT fire popstate
+        ['pushState', 'replaceState'].forEach(function (method) {
+            var original = history[method];
+            history[method] = function () {
+                original.apply(history, arguments);
+                onNavigate();
+            };
+        });
+        // Browser back / forward DOES fire popstate
+        window.addEventListener('popstate', onNavigate);
+    }
+
+    // -------------------------------------------------------------------------
     // MutationObserver — re-applies titles after Vue re-renders rows
     // -------------------------------------------------------------------------
 
@@ -179,6 +209,7 @@
     // -------------------------------------------------------------------------
 
     function init() {
+        patchHistoryApi();
         startObserver();
         setInterval(checkAndUpdate, 800);
         checkAndUpdate();

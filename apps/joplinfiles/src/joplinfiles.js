@@ -17,6 +17,8 @@ let applying = false
 
 /** Last seen directory */
 let lastDir = ''
+/** Debounce timer for navigation events */
+let navDebounceTimer = null
 
 // ---------------------------------------------------------------------------
 // API call
@@ -94,6 +96,30 @@ async function checkAndUpdate() {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Navigation detection — covers popstate (back/forward) AND
+// pushState/replaceState (Nextcloud SPA internal folder navigation)
+// ---------------------------------------------------------------------------
+
+function onNavigate() {
+    clearTimeout(navDebounceTimer)
+    navDebounceTimer = setTimeout(() => {
+        lastDir = ''
+        checkAndUpdate()
+    }, 50)
+}
+
+function patchHistoryApi() {
+    ;['pushState', 'replaceState'].forEach(method => {
+        const original = history[method]
+        history[method] = function (...args) {
+            original.apply(history, args)
+            onNavigate()
+        }
+    })
+    window.addEventListener('popstate', onNavigate)
+}
+
 function startObserver() {
     const target =
         document.getElementById('app-content') ||
@@ -111,6 +137,7 @@ function startObserver() {
 // ---------------------------------------------------------------------------
 
 document.addEventListener('DOMContentLoaded', () => {
+    patchHistoryApi()
     startObserver()
     setInterval(checkAndUpdate, 500)
     checkAndUpdate()
