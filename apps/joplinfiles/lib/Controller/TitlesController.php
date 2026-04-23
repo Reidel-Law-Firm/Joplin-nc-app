@@ -44,21 +44,41 @@ class TitlesController extends Controller {
             return new JSONResponse([]);
         }
 
-        // Verify this is a Joplin sync folder — Joplin always writes info.json here
-        try {
-            $node->get('info.json');
-        } catch (NotFoundException $e) {
+        // Verify this is a Joplin sync folder. Joplin writes one of:
+        //   - info.json                 (legacy sync target v1)
+        //   - .sync/version.txt         (sync target v2/v3 — current)
+        if (!$this->isJoplinFolder($node)) {
             return new JSONResponse([]);
         }
 
         $titles = [];
 
+        // Joplin sync-folder system entries that should never appear to the
+        // user in the Files view. Hidden via the same __joplin_hide__ marker
+        // used for revision deltas; the front-end injects a CSS rule that
+        // matches both file rows and folder rows.
+        $systemEntries = [
+            'info.json'      => true,
+            'locks'          => true,
+            'temp'           => true,
+            '.joplin-trash'  => true,
+            '.lock'          => true,
+            '.resource'      => true,
+            '.sync'          => true,
+        ];
+
         foreach ($node->getDirectoryListing() as $child) {
-            if (!($child instanceof File)) {
+            $name = $child->getName();
+
+            // Hide Joplin-internal system files/folders unconditionally.
+            if (isset($systemEntries[$name])) {
+                $titles[$name] = '__joplin_hide__';
                 continue;
             }
 
-            $name = $child->getName();
+            if (!($child instanceof File)) {
+                continue;
+            }
 
             // Joplin note/notebook files are exactly 32 lowercase hex chars + ".md"
             if (!preg_match('/^[0-9a-f]{32}\.md$/i', $name)) {
@@ -66,23 +86,45 @@ class TitlesController extends Controller {
             }
 
             try {
-                // Stream the file — read only the first non-empty line (the title)
+                // Stream the file — read only the first non-empty line that
+                // doesn't look like a Joplin metadata key (e.g. "id: ...").
+                // Files that are *only* metadata (revisions, resources, etc.)
+                // get a special "__joplin_hide__" marker so the front-end
+                // can hide their row entirely from the Files list.
                 $stream = $child->fopen('r');
                 if ($stream === false) {
                     continue;
                 }
 
                 $title = '';
+                $isMetadataOnly = false;
                 while (($line = fgets($stream)) !== false) {
                     $trimmed = trim($line);
-                    if ($trimmed !== '') {
-                        $title = $trimmed;
+                    if ($trimmed === '') {
+                        continue;
+                    }
+                    // Strip UTF-8 BOM on the very first line
+                    if ($title === '' && strncmp($trimmed, "\xEF\xBB\xBF", 3) === 0) {
+                        $trimmed = substr($trimmed, 3);
+                        if ($trimmed === '') {
+                            continue;
+                        }
+                    }
+                    // Metadata-only entries (revisions / type_:13 / resources)
+                    // start with a "key: value" line. Mark them for hiding.
+                    if (preg_match('/^[a-z][a-z0-9_]*:\s/', $trimmed)) {
+                        $isMetadataOnly = true;
                         break;
                     }
+                    // Strip leading "#" if the title was stored as a heading
+                    $title = ltrim($trimmed, "# \t");
+                    break;
                 }
                 fclose($stream);
 
-                if ($title !== '') {
+                if ($isMetadataOnly) {
+                    $titles[$name] = '__joplin_hide__';
+                } elseif ($title !== '') {
                     $titles[$name] = $title;
                 }
             } catch (\Throwable $e) {
@@ -91,5 +133,29 @@ class TitlesController extends Controller {
         }
 
         return new JSONResponse($titles);
+    }
+
+    /**
+     * Detect a Joplin sync folder by either of the canonical markers:
+     *   - info.json                 (legacy sync v1)
+     *   - .sync/version.txt         (sync v2/v3 — current)
+     */
+    private function isJoplinFolder(Folder $folder): bool {
+        try {
+            if ($folder->get('info.json') instanceof File) {
+                return true;
+            }
+        } catch (NotFoundException $e) {
+            // fall through
+        }
+        try {
+            $sync = $folder->get('.sync');
+            if ($sync instanceof Folder && $sync->get('version.txt') instanceof File) {
+                return true;
+            }
+        } catch (NotFoundException $e) {
+            // not Joplin
+        }
+        return false;
     }
 }

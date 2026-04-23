@@ -1,10 +1,146 @@
-# Joplin File Titles – Nextcloud App
+# Joplin for Nextcloud
 
-This repository contains a Nextcloud custom app:
+This repository contains two Nextcloud custom apps:
 
 | App | ID | Purpose |
 |---|---|---|
 | **Joplin File Titles** | `joplinfiles` | Display Joplin note titles instead of GUID filenames in Nextcloud Files |
+| **Joplin** | `joplin` | A dedicated notes app (header entry) that browses, reads and searches your Joplin notes |
+
+Both apps can be enabled side-by-side and are fully independent. Neither modifies any Joplin files on disk, and neither touches Joplin's sync mechanism.
+
+---
+
+## Joplin app (`joplin`)
+
+A native-feeling Nextcloud app that reads the Joplin data already synced to your
+Nextcloud account and surfaces it as a browsable notes app.
+
+### Features
+
+- **Header navigation entry** — appears next to Files, Photos, etc.
+- **Notebook tree** — reconstructed from Joplin's `parent_id` metadata
+- **Notes list** — human-readable titles (from first line / first heading), sorted by last modified
+- **Markdown viewer** — read-only, renders headings, lists, code, tables, links, images…
+- **Search** — title + indexed body snippet; full-body scan for title matches
+- **Auto-detection** — finds the Joplin folder via the `info.json` marker (up to 3 levels deep)
+- **Manual root override** — if auto-detect fails, configure the path from the UI
+- **Indexed** — a lightweight per-user index is cached (5 min TTL); the "Reload" button forces a rebuild
+- **Read-only** — the app never writes to, renames, or otherwise modifies any `.md` file
+- **No external dependencies** — vanilla JS, no build step, no CDN assets
+
+### Architecture
+
+```
+apps/joplin/
+├── appinfo/
+│   ├── info.xml              # App metadata + <navigations> entry
+│   └── routes.php            # Page + API routes
+├── css/joplin.css            # Three-pane layout styles
+├── img/
+│   ├── app.svg               # Header menu icon (monochrome)
+│   └── joplin.svg            # Larger app icon
+├── js/joplin-main.js         # Pre-built SPA (vanilla JS, no bundler)
+├── lib/
+│   ├── AppInfo/Application.php
+│   ├── Controller/
+│   │   ├── PageController.php   # Serves the SPA shell
+│   │   └── ApiController.php    # JSON API (tree / note / search / reindex / root)
+│   └── Service/
+│       ├── JoplinParser.php        # Parses one Joplin .md file (title/body/metadata)
+│       └── JoplinIndexService.php  # Builds + caches the per-user index
+└── templates/main.php
+```
+
+### API Endpoints
+
+All endpoints are user-authenticated (Nextcloud session + request token).
+
+| Method | URL | Description |
+|---|---|---|
+| `GET` | `/apps/joplin/` | SPA page |
+| `GET` | `/apps/joplin/api/tree` | Full index — folders + notes metadata (no bodies) |
+| `GET` | `/apps/joplin/api/note/{id}` | Full note: title, rendered-ready body, timestamps |
+| `GET` | `/apps/joplin/api/search?q=…` | Search results (title + snippet), max 100 |
+| `POST` | `/apps/joplin/api/reindex` | Force rebuild of the index |
+| `GET` | `/apps/joplin/api/root` | Current configured root folder path |
+| `POST` | `/apps/joplin/api/root` | Set root folder (form field `path`, relative to files root) |
+
+### Data-handling layer — how notes are parsed
+
+A Joplin `<guid>.md` file on disk looks like:
+
+```
+My note title
+
+# Optional body heading
+The body content, in Markdown…
+
+id: 93b58f6f0b404dc5908b7bfc0b8d4879
+parent_id: 52ac…
+created_time: 2024-05-01T08:12:33.000Z
+updated_time: 2024-05-03T16:44:12.000Z
+type_: 1
+```
+
+`JoplinParser::parse()` walks from the end of the file collecting contiguous
+`key: value` lines to isolate the metadata block; the first non-empty line is
+the title; everything between is the body. A lightweight
+`parseHeader()` variant is used at index time — it reads only the first 512
+bytes (for the title) and the last 4 KiB (for the metadata) so indexing a
+large sync folder never loads full bodies into memory.
+
+Folders (Joplin notebooks) are just `.md` files with `type_: 2`. The tree is
+reconstructed purely from their `parent_id` fields.
+
+### Performance
+
+- **Two-tier parse** — headers are streamed (~4.5 KiB read per file) at index time; full bodies only loaded when a note is opened.
+- **Cached index** — stored via `ICacheFactory::createDistributed` per user (5-min TTL).
+- **Lazy search** — search runs over the cached index + small body snippets; only title-match results optionally fall back to full-body scanning.
+
+### Error handling
+
+- Missing Joplin folder → UI offers a manual-path prompt (stored as a user setting).
+- Unparseable / oversized files → skipped with a debug log, do not break the index.
+- Note-load failures → surface a user-friendly error in the viewer pane.
+- All endpoints return structured JSON error responses with appropriate HTTP status codes.
+
+### Non-goals
+
+- No editing (viewer is read-only).
+- No changes to Joplin's sync protocol, file naming, or metadata format.
+- No rewriting or renaming of any `.md` file.
+
+### Installation & testing
+
+```bash
+# 1. Start the stack (Nextcloud + MariaDB)
+docker compose up -d
+
+# 2. Enable the app
+docker compose exec --user www-data nextcloud php occ app:enable joplin
+
+# 3. Open http://localhost:8080 — log in as admin / admin123
+#    The "Joplin" app appears in the header navigation.
+
+# 4. In the Files app, upload or sync a Joplin folder
+#    (a directory that contains "info.json" + <guid>.md files).
+
+# 5. Click the Joplin header entry — the app auto-detects the folder.
+#    If it doesn't, enter the path (e.g. "Joplin") in the prompt.
+
+# Force a re-index anytime via the "Reload" button in the notes pane,
+# or from the CLI:
+docker compose exec --user www-data nextcloud php occ config:user:set <user> joplin joplin_root_path --value="Joplin"
+```
+
+### Upgrade / disable
+
+```bash
+docker compose exec --user www-data nextcloud php occ app:disable joplin
+docker compose exec --user www-data nextcloud php occ app:enable  joplin
+```
 
 ---
 

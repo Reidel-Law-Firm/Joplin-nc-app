@@ -1,5 +1,12 @@
 # Node
 apps/joplinfiles/node_modules/
+apps/joplinfiles/js/*.LICENSE.txt
+
+# Third-party Nextcloud apps (deployed alongside but not part of this repo)
+apps/notes/
+
+# One-off troubleshooting / migration scripts (not part of the shipped product)
+scripts/
 
 # Docker local data
 docker/

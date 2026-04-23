@@ -1,0 +1,548 @@
+/* =====================================================================
+   Joplin app — Notes-style three-pane layout
+   notebook tree | notes list | viewer / editor
+   ===================================================================== */
+
+/* Fill the NC content area exactly — no fixed/absolute offsets so we don't
+ * leave a blue gap under the navigation bar on NC33+. */
+#content {
+    padding: 0 !important;
+}
+#app-content {
+    padding: 0 !important;
+}
+#joplin-app {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    background: var(--color-main-background);
+    color: var(--color-main-text);
+    font-family: var(--font-face, system-ui, -apple-system, "Segoe UI", sans-serif);
+}
+
+.joplin-pane {
+    overflow-y: auto;
+    border-right: 1px solid var(--color-border);
+    background: var(--color-main-background);
+}
+.joplin-pane-tree {
+    flex: 0 0 240px;
+    min-width: 200px;
+    padding: 16px 12px;
+    background: var(--color-background-dark, #f5f5f5);
+}
+.joplin-pane-list {
+    flex: 0 0 340px;
+    min-width: 280px;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+}
+.joplin-pane-viewer {
+    flex: 1 1 auto;
+    border-right: none;
+    padding: 28px 40px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+}
+
+/* ---------- Sidebar / notebook tree ---------- */
+.joplin-tree-title,
+.joplin-list-header {
+    font-weight: 700;
+    padding: 6px 10px;
+    color: var(--color-text-maxcontrast);
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 0.6px;
+}
+.joplin-tree ul { list-style: none; padding: 0; margin: 0; }
+.joplin-tree li { padding: 0; }
+.joplin-tree-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 10px;
+    cursor: pointer;
+    border-radius: var(--border-radius, 6px);
+    user-select: none;
+    font-size: 14px;
+}
+.joplin-tree-item:hover { background: var(--color-background-hover); }
+.joplin-tree-item.active {
+    background: var(--color-primary-element-light, var(--color-background-darker, #e0e0e0));
+    color: var(--color-primary-element, var(--color-main-text));
+    font-weight: 600;
+}
+.joplin-tree-item .twisty {
+    display: inline-block;
+    width: 12px;
+    text-align: center;
+    color: var(--color-text-maxcontrast);
+    font-size: 11px;
+}
+.joplin-tree-item .label {
+    flex: 1 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.joplin-tree ul ul { padding-left: 14px; }
+
+/* ---------- Search bar (top of list pane) ---------- */
+.joplin-search {
+    padding: 10px 12px 8px;
+    border-bottom: 1px solid var(--color-border);
+    position: sticky;
+    top: 0;
+    background: var(--color-main-background);
+    z-index: 2;
+}
+.joplin-search input {
+    width: 100%;
+    padding: 7px 12px;
+    box-sizing: border-box;
+    border-radius: var(--border-radius-large, 8px);
+    border: 1px solid var(--color-border);
+    background: var(--color-background-dark, #f5f5f5);
+    font-size: 13px;
+}
+.joplin-search input:focus {
+    outline: none;
+    border-color: var(--color-primary-element);
+    background: var(--color-main-background);
+}
+
+/* ---------- Toolbar above notes list ---------- */
+.joplin-toolbar {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--color-border);
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    font-size: 12px;
+    color: var(--color-text-maxcontrast);
+    background: var(--color-main-background);
+}
+.joplin-toolbar button {
+    padding: 5px 10px;
+    font-size: 12px;
+    border-radius: var(--border-radius, 6px);
+    border: 1px solid var(--color-border);
+    background: var(--color-main-background);
+    color: var(--color-main-text);
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.joplin-toolbar button:hover { background: var(--color-background-hover); }
+.joplin-toolbar button.primary {
+    background: var(--color-primary-element);
+    color: var(--color-primary-element-text);
+    border-color: var(--color-primary-element);
+    font-weight: 600;
+}
+.joplin-toolbar button.primary:hover { opacity: 0.9; }
+.joplin-toolbar .joplin-counts {
+    margin-left: auto;
+    font-size: 11px;
+    white-space: nowrap;
+}
+
+/* ---------- Notes list (middle pane) ---------- */
+.joplin-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    overflow-y: auto;
+    flex: 1 1 auto;
+}
+.joplin-list li {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--color-border);
+    cursor: pointer;
+    transition: background 0.12s;
+    border-left: 3px solid transparent;
+}
+.joplin-list li:hover { background: var(--color-background-hover); }
+.joplin-list li.active {
+    background: var(--color-primary-element-light, var(--color-background-dark, #f0f0f0));
+    border-left-color: var(--color-primary-element);
+}
+.joplin-list .title {
+    font-weight: 600;
+    font-size: 14px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-bottom: 3px;
+}
+.joplin-list .meta {
+    font-size: 11px;
+    color: var(--color-text-maxcontrast);
+}
+.joplin-list .excerpt {
+    font-size: 12px;
+    color: var(--color-text-lighter, var(--color-text-maxcontrast));
+    margin-top: 4px;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    line-height: 1.35;
+}
+.joplin-list .joplin-empty-list {
+    padding: 36px 16px;
+    text-align: center;
+    color: var(--color-text-maxcontrast);
+    font-size: 13px;
+}
+
+/* ---------- Viewer (right pane, read mode) ---------- */
+.joplin-viewer-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 4px;
+}
+.joplin-viewer-title {
+    font-size: 28px;
+    font-weight: 700;
+    line-height: 1.2;
+    margin: 0;
+    color: var(--color-main-text);
+    flex: 1 1 auto;
+    word-break: break-word;
+}
+.joplin-edit-btn {
+    flex: 0 0 auto;
+    padding: 6px 16px;
+    font-size: 13px;
+    font-weight: 500;
+    border-radius: var(--border-radius, 6px);
+    border: 1px solid var(--color-border);
+    background: var(--color-main-background);
+    color: var(--color-main-text);
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.joplin-edit-btn:hover { background: var(--color-background-hover); }
+
+.joplin-viewer-actions {
+    flex: 0 0 auto;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+.joplin-delete-btn {
+    flex: 0 0 auto;
+    padding: 6px 16px;
+    font-size: 13px;
+    font-weight: 500;
+    border-radius: var(--border-radius, 6px);
+    border: 1px solid var(--color-border);
+    background: var(--color-main-background);
+    color: var(--color-error, #c1392b);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+.joplin-delete-btn:hover {
+    background: var(--color-error, #c1392b);
+    color: #fff;
+    border-color: var(--color-error, #c1392b);
+}
+
+.joplin-toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--color-main-text);
+    color: var(--color-main-background);
+    padding: 10px 18px;
+    border-radius: var(--border-radius-large, 10px);
+    font-size: 13px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.18);
+    z-index: 10000;
+    opacity: 0.95;
+}
+
+.joplin-viewer-meta {
+    color: var(--color-text-maxcontrast);
+    font-size: 12px;
+    margin-bottom: 24px;
+}
+.joplin-viewer-body {
+    line-height: 1.65;
+    max-width: 820px;
+    font-size: 15px;
+}
+.joplin-viewer-body h1,
+.joplin-viewer-body h2,
+.joplin-viewer-body h3,
+.joplin-viewer-body h4 { margin-top: 1.4em; margin-bottom: 0.5em; line-height: 1.25; }
+.joplin-viewer-body h1 { font-size: 1.8em; }
+.joplin-viewer-body h2 { font-size: 1.45em; }
+.joplin-viewer-body h3 { font-size: 1.2em; }
+.joplin-viewer-body p { margin: 0.6em 0; }
+.joplin-viewer-body ul,
+.joplin-viewer-body ol { padding-left: 1.4em; }
+.joplin-viewer-body li { margin: 0.2em 0; }
+.joplin-viewer-body pre {
+    background: var(--color-background-dark, #f4f4f4);
+    padding: 12px 14px;
+    border-radius: var(--border-radius, 6px);
+    overflow-x: auto;
+    font-size: 13px;
+}
+.joplin-viewer-body code {
+    background: var(--color-background-dark, #f4f4f4);
+    padding: 2px 5px;
+    border-radius: 3px;
+    font-family: var(--font-face-monospace, ui-monospace, SFMono-Regular, Menlo, monospace);
+    font-size: 0.9em;
+}
+.joplin-viewer-body pre code {
+    background: transparent;
+    padding: 0;
+    font-size: 13px;
+}
+.joplin-viewer-body blockquote {
+    border-left: 3px solid var(--color-primary-element-light, var(--color-border));
+    margin: 0.8em 0;
+    padding: 0.4em 0 0.4em 14px;
+    color: var(--color-text-maxcontrast);
+}
+.joplin-viewer-body table { border-collapse: collapse; margin: 1em 0; }
+.joplin-viewer-body th,
+.joplin-viewer-body td {
+    border: 1px solid var(--color-border);
+    padding: 6px 10px;
+}
+.joplin-viewer-body th { background: var(--color-background-dark); font-weight: 600; }
+.joplin-viewer-body img { max-width: 100%; border-radius: var(--border-radius, 6px); }
+.joplin-viewer-body a { color: var(--color-primary-element); text-decoration: none; }
+.joplin-viewer-body a:hover { text-decoration: underline; }
+.joplin-viewer-body hr { border: none; border-top: 1px solid var(--color-border); margin: 2em 0; }
+
+/* ---------- Editor (right pane, edit mode) ---------- */
+.joplin-editor-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+.joplin-editor-mode {
+    color: var(--color-text-maxcontrast);
+    font-size: 13px;
+    font-weight: 500;
+}
+.joplin-editor-mode strong {
+    color: var(--color-primary-element);
+}
+.joplin-editor-actions { display: flex; gap: 8px; }
+.joplin-editor-actions button {
+    padding: 6px 16px;
+    font-size: 13px;
+    font-weight: 500;
+    border-radius: var(--border-radius, 6px);
+    border: 1px solid var(--color-border);
+    background: var(--color-main-background);
+    color: var(--color-main-text);
+    cursor: pointer;
+}
+.joplin-editor-actions button:hover { background: var(--color-background-hover); }
+.joplin-editor-actions button[disabled] { opacity: 0.5; cursor: not-allowed; }
+.joplin-editor-actions button.primary {
+    background: var(--color-primary-element);
+    color: var(--color-primary-element-text);
+    border-color: var(--color-primary-element);
+}
+.joplin-editor-actions button.primary:hover { opacity: 0.9; }
+
+.joplin-editor-hint {
+    font-size: 12px;
+    color: var(--color-text-maxcontrast);
+    margin-bottom: 8px;
+    padding: 6px 10px;
+    background: var(--color-background-dark, #f5f5f5);
+    border-radius: var(--border-radius, 6px);
+    border-left: 3px solid var(--color-primary-element-light, var(--color-primary-element));
+}
+
+/* ---------- Markdown formatting toolbar ---------- */
+.joplin-md-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    align-items: center;
+    padding: 6px 8px;
+    margin-bottom: 6px;
+    background: var(--color-background-dark, #f5f5f5);
+    border: 1px solid var(--color-border);
+    border-radius: var(--border-radius, 6px);
+    position: sticky;
+    top: 0;
+    z-index: 5;
+}
+.joplin-md-btn {
+    min-width: 28px;
+    height: 28px;
+    padding: 0 8px;
+    font-size: 13px;
+    line-height: 1;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--color-main-text);
+    border-radius: var(--border-radius, 4px);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.joplin-md-btn:hover {
+    background: var(--color-background-hover);
+    border-color: var(--color-border);
+}
+.joplin-md-btn.joplin-md-bold   { font-weight: 700; }
+.joplin-md-btn.joplin-md-italic { font-style: italic; }
+.joplin-md-btn.joplin-md-strike { text-decoration: line-through; }
+.joplin-md-btn.joplin-md-h      { font-weight: 700; }
+.joplin-md-btn.joplin-md-preview {
+    background: var(--color-primary-element-light, var(--color-background-dark));
+    color: var(--color-primary-element);
+    font-weight: 600;
+}
+.joplin-md-sep {
+    display: inline-block;
+    width: 1px;
+    height: 18px;
+    background: var(--color-border);
+    margin: 0 4px;
+}
+.joplin-md-spacer { flex: 1 1 auto; }
+
+.joplin-editor-preview {
+    flex: 1 1 auto;
+    min-height: 60vh;
+    padding: 14px 16px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--border-radius, 6px);
+    background: var(--color-main-background);
+    overflow-y: auto;
+}
+
+.joplin-editor-body {
+    width: 100%;
+    box-sizing: border-box;
+    flex: 1 1 auto;
+    min-height: 60vh;
+    padding: 14px 16px;
+    font-family: var(--font-face-monospace, ui-monospace, SFMono-Regular, Menlo, monospace);
+    font-size: 14px;
+    line-height: 1.6;
+    border: 1px solid var(--color-border);
+    border-radius: var(--border-radius, 6px);
+    background: var(--color-main-background);
+    color: var(--color-main-text);
+    resize: none;
+    outline: none;
+}
+.joplin-editor-body:focus { border-color: var(--color-primary-element); }
+
+.joplin-editor-status {
+    margin-top: 8px;
+    font-size: 13px;
+    color: var(--color-text-maxcontrast);
+    min-height: 18px;
+}
+.joplin-editor-status.error { color: var(--color-error); font-weight: 500; }
+.joplin-editor-status.success { color: var(--color-success, #2eb045); }
+
+/* ---------- Empty / loading states ---------- */
+.joplin-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex: 1 1 auto;
+    color: var(--color-text-maxcontrast);
+    padding: 48px 24px;
+    text-align: center;
+}
+.joplin-empty-icon {
+    font-size: 56px;
+    line-height: 1;
+    margin-bottom: 16px;
+    opacity: 0.3;
+}
+.joplin-empty-title {
+    font-size: 18px;
+    font-weight: 600;
+    margin-bottom: 6px;
+    color: var(--color-main-text);
+}
+.joplin-empty-subtitle {
+    font-size: 13px;
+    margin-bottom: 20px;
+    max-width: 380px;
+}
+.joplin-empty .joplin-empty-cta {
+    padding: 8px 18px;
+    font-size: 14px;
+    font-weight: 500;
+    border-radius: var(--border-radius, 6px);
+    border: none;
+    background: var(--color-primary-element);
+    color: var(--color-primary-element-text);
+    cursor: pointer;
+}
+.joplin-empty .joplin-empty-cta:hover { opacity: 0.9; }
+
+.joplin-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 1 1 auto;
+    padding: 48px;
+    color: var(--color-text-maxcontrast);
+    font-size: 14px;
+}
+.joplin-loading::before {
+    content: "";
+    display: inline-block;
+    width: 18px;
+    height: 18px;
+    margin-right: 10px;
+    border: 2px solid var(--color-border);
+    border-top-color: var(--color-primary-element);
+    border-radius: 50%;
+    animation: joplin-spin 0.8s linear infinite;
+}
+@keyframes joplin-spin { to { transform: rotate(360deg); } }
+
+.joplin-error {
+    padding: 12px 16px;
+    border: 1px solid var(--color-error);
+    background: var(--color-error-hover, #fdecea);
+    color: var(--color-error);
+    border-radius: var(--border-radius, 6px);
+    margin: 12px;
+    font-size: 13px;
+}
+
+/* ---------- Responsive ---------- */
+@media (max-width: 1100px) {
+    .joplin-pane-tree { flex-basis: 200px; min-width: 180px; }
+    .joplin-pane-list { flex-basis: 300px; min-width: 240px; }
+    .joplin-pane-viewer { padding: 20px 24px; }
+}
+@media (max-width: 768px) {
+    .joplin-pane-tree { display: none; }
+    .joplin-pane-list { flex-basis: 280px; }
+    .joplin-pane-viewer { padding: 16px; }
+    .joplin-viewer-title { font-size: 22px; }
+}
+
