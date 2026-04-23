@@ -15,7 +15,7 @@ Features:
 - Handles both notes and notebooks (Joplin folder entries)
 - Works across directory navigation without page reloads
     ]]></description>
-    <version>1.0.0</version>
+    <version>1.0.8</version>
     <licence>agpl</licence>
     <author>Schuyler &apos;Rocky&apos; Reidel</author>
     <namespace>JoplinFiles</namespace>
