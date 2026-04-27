@@ -1,5 +1,5 @@
 /* =====================================================================
-   Joplin app — two-panel layout (sidebar | viewer/editor)
+   Joplin app — three-panel layout (notebooks | notes list | viewer/editor)
    ===================================================================== */
 
 #content     { padding: 0 !important; }
@@ -16,6 +16,10 @@
     font-size: 14px;
     line-height: 1.5;
     overflow: hidden;
+    /* Light, subtle divider colour reused across panes & headers. */
+    --joplin-divider: var(--color-border-dark, rgba(0, 0, 0, 0.07));
+    --joplin-pane-bg-soft: var(--color-background-hover, #f6f7f9);
+    --joplin-pane-bg-softer: var(--color-background-dark, #fafbfc);
 }
 
 /* ---------- Panes ---------- */
@@ -25,16 +29,30 @@
     box-sizing: border-box;
 }
 
+/* Left column: notebooks tree */
+.joplin-pane-notebooks {
+    flex: 0 0 260px;
+    width: 260px;
+    min-width: 220px;
+    max-width: 320px;
+    border-right: 1px solid var(--joplin-divider);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--joplin-pane-bg-soft);
+}
+
+/* Middle column: notes list */
 .joplin-pane-list {
     flex: 0 0 320px;
     width: 320px;
     min-width: 280px;
-    max-width: 360px;
-    border-right: 1px solid var(--color-border);
+    max-width: 380px;
+    border-right: 1px solid var(--joplin-divider);
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    background: var(--color-background-dark, #f7f8fa);
+    background: var(--joplin-pane-bg-softer);
 }
 
 .joplin-pane-viewer {
@@ -53,8 +71,8 @@
     justify-content: space-between;
     gap: 10px;
     padding: 14px 14px 12px;
-    background: var(--color-main-background);
-    border-bottom: 1px solid var(--color-border);
+    background: transparent;
+    border-bottom: 1px solid var(--joplin-divider);
 }
 .joplin-sidebar-brand {
     display: flex;
@@ -98,11 +116,40 @@
         box-shadow: 0 1px 4px rgba(0,0,0,0.1);
     }
 
+/* ---------- Notes-pane header (middle column top bar) ---------- */
+.joplin-notes-pane-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 12px 14px;
+    background: transparent;
+    border-bottom: 1px solid var(--joplin-divider);
+}
+.joplin-notes-pane-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--color-main-text);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+.joplin-notes-pane-count {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--color-text-maxcontrast);
+    margin-left: 4px;
+}
+
 /* ---------- Search ---------- */
 .joplin-search {
     padding: 10px 14px;
-    background: var(--color-main-background);
-    border-bottom: 1px solid var(--color-border);
+    background: transparent;
+    border-bottom: 1px solid var(--joplin-divider);
 }
 .joplin-search input {
     width: 100%;
@@ -121,16 +168,14 @@
     background: var(--color-main-background);
 }
 
-/* ---------- Notebooks (collapsible) ---------- */
+/* ---------- Notebooks pane (always visible in its own column) ---------- */
 .joplin-notebooks {
-    border-bottom: 1px solid var(--color-border);
-    background: var(--color-main-background);
-    flex: 0 0 auto;
-    max-height: 38vh;
+    background: transparent;
+    flex: 1 1 auto;
     display: flex;
     flex-direction: column;
+    min-height: 0;
 }
-.joplin-notebooks.collapsed { max-height: none; }
 .joplin-notebooks-header {
     display: flex;
     align-items: center;
@@ -139,19 +184,14 @@
     padding: 10px 12px;
     background: transparent;
     border: none;
-    cursor: pointer;
+    border-bottom: 1px solid var(--joplin-divider);
     font-size: 11px;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.6px;
     color: var(--color-text-maxcontrast);
     text-align: left;
-        transition: all 0.2s cubic-bezier(0.2, 0.8, 0.3, 1);
 }
-    .joplin-notebooks-header:hover {
-        background: var(--color-background-hover);
-        color: var(--color-main-text);
-    }
 .joplin-notebooks-twisty {
     display: inline-block;
     width: 12px;
@@ -198,9 +238,10 @@
 }
 .joplin-notebooks-body {
     overflow-y: auto;
-    padding: 2px 8px 8px;
+    padding: 6px 8px 12px;
+    flex: 1 1 auto;
+    min-height: 0;
 }
-.joplin-notebooks.collapsed .joplin-notebooks-body { display: none; }
 
 .joplin-tree ul { list-style: none; padding: 0; margin: 0; }
 .joplin-tree li { padding: 0; }
@@ -248,7 +289,7 @@
     text-transform: uppercase;
     letter-spacing: 0.6px;
     color: var(--color-text-maxcontrast);
-    background: var(--color-background-dark, #f7f8fa);
+    background: transparent;
 }
 .joplin-list {
     list-style: none;
@@ -256,12 +297,12 @@
     padding: 0;
     overflow-y: auto;
     flex: 1 1 auto;
-    background: var(--color-background-dark, #f7f8fa);
+    background: transparent;
 }
 .joplin-list li {
     position: relative;
     padding: 12px 14px 12px 18px;
-    border-bottom: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--joplin-divider);
     cursor: pointer;
         transition: all 0.15s cubic-bezier(0.2, 0.8, 0.3, 1);
 }
@@ -450,7 +491,7 @@
     font-size: 12.5px;
     margin-bottom: 24px;
     padding-bottom: 14px;
-    border-bottom: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--joplin-divider);
 }
 .joplin-viewer-body {
     line-height: 1.7;
@@ -868,13 +909,56 @@
        danger background. Lock our colors in. */
     color: var(--color-main-text) !important;
     cursor: pointer;
-    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease,
+                transform 0.15s ease, box-shadow 0.15s ease;
 }
 .joplin-tree-action:hover,
 .joplin-tree-action:focus-visible {
     background: var(--color-background-hover);
     color: var(--color-main-text) !important;
     border-color: var(--color-primary-element, #0082c9);
+}
+
+/* ---------- Icon-only buttons (Rename / Delete / Edit) ---------- */
+/* Used on .joplin-tree-action.joplin-icon-only (notebook rename/delete)
+   and .joplin-edit-btn / .joplin-delete-btn .joplin-icon-only (viewer). */
+.joplin-icon-only {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    padding: 0 !important;
+    border-radius: 8px;
+    line-height: 1;
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 0;
+}
+.joplin-icon-only svg {
+    width: 16px;
+    height: 16px;
+    display: block;
+    pointer-events: none;
+}
+/* Smaller variant when used inside the notebook tree row */
+.joplin-tree-action.joplin-icon-only {
+    width: 26px;
+    height: 26px;
+    border-radius: 6px;
+}
+.joplin-tree-action.joplin-icon-only svg {
+    width: 14px;
+    height: 14px;
+}
+.joplin-icon-only:hover,
+.joplin-icon-only:focus-visible {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.10);
+}
+.joplin-icon-only:active {
+    transform: translateY(0);
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.08);
 }
 
 /* Danger variant (Delete). Idle: dark red text on white. Hover: solid red + white. */
@@ -902,22 +986,39 @@
 }
 
 /* ---------- Responsive ---------- */
-@media (max-width: 1100px) {
-    .joplin-pane-list   { flex-basis: 300px; width: 300px; min-width: 260px; }
-    .joplin-pane-viewer { padding: 24px 28px; }
+@media (max-width: 1280px) {
+    .joplin-pane-notebooks { flex-basis: 220px; width: 220px; min-width: 200px; }
+    .joplin-pane-list      { flex-basis: 290px; width: 290px; min-width: 260px; }
+    .joplin-pane-viewer    { padding: 24px 28px; }
+}
+
+@media (max-width: 1024px) {
+    .joplin-pane-notebooks { flex-basis: 200px; width: 200px; min-width: 180px; }
+    .joplin-pane-list      { flex-basis: 270px; width: 270px; min-width: 240px; }
 }
 
 @media (max-width: 768px) {
+    /* Notebooks + notes list both slide in together as a sidebar overlay */
+    .joplin-pane-notebooks,
     .joplin-pane-list {
         position: absolute;
-        top: 0; bottom: 0; left: 0;
-        width: 86%;
-        max-width: 340px;
+        top: 0; bottom: 0;
         z-index: 5;
         transform: translateX(-100%);
         transition: transform 0.22s ease;
         box-shadow: 2px 0 12px rgba(0,0,0,0.12);
     }
+    .joplin-pane-notebooks {
+        left: 0;
+        width: 200px;
+        max-width: 60%;
+    }
+    .joplin-pane-list {
+        left: 200px;
+        width: calc(86% - 200px);
+        max-width: calc(340px - 200px);
+    }
+    #joplin-app.joplin-sidebar-open .joplin-pane-notebooks,
     #joplin-app.joplin-sidebar-open .joplin-pane-list { transform: translateX(0); }
     #joplin-app.joplin-sidebar-open .joplin-backdrop  { display: block; }
     .joplin-pane-viewer {

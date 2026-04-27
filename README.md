@@ -5,13 +5,13 @@ This repository contains two Nextcloud custom apps:
 | App | ID | Purpose |
 |---|---|---|
 | **Joplin File Titles** | `joplinfiles` | Display Joplin note titles instead of GUID filenames in Nextcloud Files |
-| **Joplin** | `joplin` | A dedicated notes app (header entry) that browses, reads and searches your Joplin notes |
+| **Joplin** | `joplin-nc-app` | A dedicated notes app (header entry) that browses, reads and searches your Joplin notes |
 
 Both apps can be enabled side-by-side and are fully independent. Neither modifies any Joplin files on disk, and neither touches Joplin's sync mechanism.
 
 ---
 
-## Joplin app (`joplin`)
+## Joplin app (`joplin-nc-app`)
 
 A native-feeling Nextcloud app that reads the Joplin data already synced to your
 Nextcloud account and surfaces it as a browsable notes app.
@@ -32,7 +32,7 @@ Nextcloud account and surfaces it as a browsable notes app.
 ### Architecture
 
 ```
-apps/joplin/
+apps/joplin-nc-app/
 ├── appinfo/
 │   ├── info.xml              # App metadata + <navigations> entry
 │   └── routes.php            # Page + API routes
@@ -58,13 +58,13 @@ All endpoints are user-authenticated (Nextcloud session + request token).
 
 | Method | URL | Description |
 |---|---|---|
-| `GET` | `/apps/joplin/` | SPA page |
-| `GET` | `/apps/joplin/api/tree` | Full index — folders + notes metadata (no bodies) |
-| `GET` | `/apps/joplin/api/note/{id}` | Full note: title, rendered-ready body, timestamps |
-| `GET` | `/apps/joplin/api/search?q=…` | Search results (title + snippet), max 100 |
-| `POST` | `/apps/joplin/api/reindex` | Force rebuild of the index |
-| `GET` | `/apps/joplin/api/root` | Current configured root folder path |
-| `POST` | `/apps/joplin/api/root` | Set root folder (form field `path`, relative to files root) |
+| `GET` | `/apps/joplin-nc-app/` | SPA page |
+| `GET` | `/apps/joplin-nc-app/api/tree` | Full index — folders + notes metadata (no bodies) |
+| `GET` | `/apps/joplin-nc-app/api/note/{id}` | Full note: title, rendered-ready body, timestamps |
+| `GET` | `/apps/joplin-nc-app/api/search?q=…` | Search results (title + snippet), max 100 |
+| `POST` | `/apps/joplin-nc-app/api/reindex` | Force rebuild of the index |
+| `GET` | `/apps/joplin-nc-app/api/root` | Current configured root folder path |
+| `POST` | `/apps/joplin-nc-app/api/root` | Set root folder (form field `path`, relative to files root) |
 
 ### Data-handling layer — how notes are parsed
 
@@ -138,8 +138,8 @@ docker compose exec --user www-data nextcloud php occ config:user:set <user> jop
 ### Upgrade / disable
 
 ```bash
-docker compose exec --user www-data nextcloud php occ app:disable joplin
-docker compose exec --user www-data nextcloud php occ app:enable  joplin
+docker compose exec --user www-data nextcloud php occ app:disable joplin-nc-app
+docker compose exec --user www-data nextcloud php occ app:enable  joplin-nc-app
 ```
 
 ---

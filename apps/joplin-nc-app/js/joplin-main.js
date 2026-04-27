@@ -32,6 +32,12 @@
         return node;
     }
 
+    /* Inline 16x16 SVG icons (Material-style) used by icon-only action buttons. */
+    const ICONS = {
+        pencil: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>',
+        trash:  '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>',
+    };
+
     function escHtml(s) {
         return String(s)
             .replace(/&/g, '&amp;')
@@ -398,22 +404,22 @@
         if (!isAll) {
             children.push(el('span', { class: 'joplin-tree-actions' }, [
                 el('button', {
-                    class: 'joplin-tree-action',
+                    class: 'joplin-tree-action joplin-icon-only',
                     type: 'button',
                     title: 'Rename notebook',
                     'aria-label': 'Rename notebook',
-                    text: 'Rename',
+                    html: ICONS.pencil,
                     onclick: function (ev) {
                         ev.stopPropagation();
                         promptRenameFolder(folder);
                     },
                 }),
                 el('button', {
-                    class: 'joplin-tree-action danger',
+                    class: 'joplin-tree-action joplin-icon-only danger',
                     type: 'button',
                     title: 'Delete notebook',
                     'aria-label': 'Delete notebook',
-                    text: 'Delete',
+                    html: ICONS.trash,
                     onclick: function (ev) {
                         ev.stopPropagation();
                         confirmDeleteFolder(folder);
@@ -443,10 +449,10 @@
         return item;
     }
 
-    function renderList(root) {
+    function renderNotebooksPane(root) {
         root.innerHTML = '';
 
-        // Compact app header (sidebar)
+        // Brand header (app title + total notes count + sync status)
         const statusLabel = ({
             syncing: 'Syncing…',
             ok:      'Synced',
@@ -467,38 +473,14 @@
                     text: Object.keys(state.notes).length + ' notes' }),
                 statusPill,
             ].filter(Boolean)),
-            el('button', {
-                class: 'joplin-new-btn',
-                title: 'Create a new note',
-                'aria-label': 'Create a new note',
-                onclick: function () { startCreateNote(); state.sidebarOpen = false; },
-            }, [el('span', { text: '+ New note' })]),
         ]);
         root.appendChild(header);
 
-        const search = el('div', { class: 'joplin-search' }, [
-            el('input', {
-                type: 'search',
-                placeholder: 'Search notes…',
-                value: state.searchQuery,
-                oninput: onSearchInput,
-            }),
-        ]);
-        root.appendChild(search);
-
-        // Collapsible notebooks section (was a separate pane)
-        const notebooks = el('div', { class: 'joplin-notebooks' + (state.notebooksCollapsed ? ' collapsed' : '') });
-        const notebooksHeader = el('button', {
+        // Notebooks section (always visible in its own pane)
+        const notebooks = el('div', { class: 'joplin-notebooks' });
+        const notebooksHeader = el('div', {
             class: 'joplin-notebooks-header',
-            type: 'button',
-            'aria-expanded': state.notebooksCollapsed ? 'false' : 'true',
-            onclick: function () {
-                state.notebooksCollapsed = !state.notebooksCollapsed;
-                render();
-            },
         }, [
-            el('span', { class: 'joplin-notebooks-twisty',
-                text: state.notebooksCollapsed ? '▸' : '▾' }),
             el('span', { class: 'joplin-notebooks-label', text: 'Notebooks' }),
             el('span', { class: 'joplin-notebooks-count',
                 text: String(Object.keys(state.folders).length) }),
@@ -522,17 +504,22 @@
             }),
         ]);
         notebooks.appendChild(notebooksHeader);
-        if (!state.notebooksCollapsed) {
-            const treeWrap = el('div', { class: 'joplin-notebooks-body' });
-            renderTree(treeWrap);
-            notebooks.appendChild(treeWrap);
-        }
-        root.appendChild(notebooks);
 
+        const treeWrap = el('div', { class: 'joplin-notebooks-body' });
+        renderTree(treeWrap);
+        notebooks.appendChild(treeWrap);
+
+        root.appendChild(notebooks);
+    }
+
+    function renderNotesPane(root) {
+        root.innerHTML = '';
+
+        // Header: selected notebook title (or search heading) + New note button
+        let listHeaderText;
         let items;
         if (state.searchResults !== null) {
-            root.appendChild(el('div', { class: 'joplin-list-header',
-                text: 'Search results (' + state.searchResults.length + ')' }));
+            listHeaderText = 'Search results';
             items = state.searchResults.map(function (r) {
                 return {
                     id: r.id,
@@ -543,10 +530,9 @@
             });
         } else {
             const sel = state.selectedFolder;
-            const listHeader = sel === '__ALL__'
+            listHeaderText = sel === '__ALL__'
                 ? 'All notes'
                 : ((state.folders[sel] || { title: 'Notes' }).title);
-            root.appendChild(el('div', { class: 'joplin-list-header', text: listHeader }));
 
             if (sel === '__ALL__') {
                 items = Object.values(state.notes);
@@ -557,6 +543,29 @@
                 return (b.mtime || 0) - (a.mtime || 0);
             });
         }
+
+        const paneHeader = el('div', { class: 'joplin-notes-pane-header' }, [
+            el('div', { class: 'joplin-notes-pane-title', text: listHeaderText, title: listHeaderText }, [
+                el('span', { class: 'joplin-notes-pane-count', text: ' (' + items.length + ')' }),
+            ]),
+            el('button', {
+                class: 'joplin-new-btn',
+                title: 'Create a new note',
+                'aria-label': 'Create a new note',
+                onclick: function () { startCreateNote(); state.sidebarOpen = false; },
+            }, [el('span', { text: '+ New note' })]),
+        ]);
+        root.appendChild(paneHeader);
+
+        const search = el('div', { class: 'joplin-search' }, [
+            el('input', {
+                type: 'search',
+                placeholder: 'Search notes…',
+                value: state.searchQuery,
+                oninput: onSearchInput,
+            }),
+        ]);
+        root.appendChild(search);
 
         const ul = el('ul', { class: 'joplin-list' });
         if (items.length === 0) {
@@ -654,15 +663,17 @@
             el('h1', { class: 'joplin-viewer-title', text: note.title || '(untitled)' }),
             el('div', { class: 'joplin-viewer-actions' }, [
                 el('button', {
-                    class: 'joplin-edit-btn',
-                    text: '✎ Edit',
+                    class: 'joplin-edit-btn joplin-icon-only',
                     title: 'Edit this note',
+                    'aria-label': 'Edit this note',
+                    html: ICONS.pencil,
                     onclick: function () { startEditNote(note); },
                 }),
                 el('button', {
-                    class: 'joplin-delete-btn',
-                    text: '🗑 Delete',
+                    class: 'joplin-delete-btn joplin-icon-only',
                     title: 'Move this note to the Joplin trash',
+                    'aria-label': 'Delete this note',
+                    html: ICONS.trash,
                     onclick: function () { confirmDeleteNote(note); },
                 }),
             ]),
@@ -1345,22 +1356,24 @@
 
     // ---------- Layout / errors -------------------------------------------
 
-    const app = { root: null, list: null, viewer: null, overlay: null, backdrop: null };
+    const app = { root: null, notebooks: null, list: null, viewer: null, overlay: null, backdrop: null };
 
     function buildLayout() {
         const root = document.getElementById('joplin-app');
         root.innerHTML = '';
         app.root = root;
 
-        // Two-panel: sidebar (notebooks + list) | main (viewer/editor)
-        app.list   = el('div', { class: 'joplin-pane joplin-pane-list' });
-        app.viewer = el('div', { class: 'joplin-pane joplin-pane-viewer' });
+        // Three-panel: notebooks | notes list | viewer/editor
+        app.notebooks = el('div', { class: 'joplin-pane joplin-pane-notebooks' });
+        app.list      = el('div', { class: 'joplin-pane joplin-pane-list' });
+        app.viewer    = el('div', { class: 'joplin-pane joplin-pane-viewer' });
 
         app.backdrop = el('div', {
             class: 'joplin-backdrop',
             onclick: function () { state.sidebarOpen = false; render(); },
         });
 
+        root.appendChild(app.notebooks);
         root.appendChild(app.list);
         root.appendChild(app.backdrop);
         root.appendChild(app.viewer);
@@ -1377,7 +1390,8 @@
 
     function render() {
         if (!app.root) return;
-        renderList(app.list);
+        renderNotebooksPane(app.notebooks);
+        renderNotesPane(app.list);
         renderViewer(app.viewer);
         // Sidebar / overlay state
         app.root.classList.toggle('joplin-sidebar-open', !!state.sidebarOpen);
