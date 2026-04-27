@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <info xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
       xsi:noNamespaceSchemaLocation="https://apps.nextcloud.com/schema/apps/info.xsd">
-    <id>joplin</id>
+    <id>joplin-nc-app</id>
     <name>Joplin</name>
     <summary>Browse your Joplin notes inside Nextcloud</summary>
     <description><![CDATA[A dedicated Joplin notes app for Nextcloud.
