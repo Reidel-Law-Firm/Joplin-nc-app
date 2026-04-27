@@ -27,6 +27,11 @@ class PageController extends Controller {
      * @NoCSRFRequired
      */
     public function index(): TemplateResponse {
+        // Vendored libraries (marked + DOMPurify) for Markdown rendering.
+        // Loaded BEFORE joplin-main so they're available as window.marked
+        // and window.DOMPurify when the SPA boots.
+        Util::addScript(Application::APP_ID, 'vendor/marked.min');
+        Util::addScript(Application::APP_ID, 'vendor/purify.min');
         Util::addScript(Application::APP_ID, 'joplin-main');
         Util::addStyle(Application::APP_ID, 'joplin');
 

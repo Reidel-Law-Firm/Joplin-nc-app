@@ -41,6 +41,23 @@
             .replace(/'/g, '&#39;');
     }
 
+    /**
+     * Re-allow a small whitelist of safe HTML tags after escHtml() has run.
+     * Joplin notes commonly contain raw <br>, <b>, <i>, <u>, <sub>, <sup>, etc.
+     * This converts the escaped &lt;tag&gt; sequences back into real tags so
+     * they render, while every other tag remains harmlessly escaped.
+     */
+    function unescapeSafeTags(s) {
+        // Tags with no attributes that we trust enough to render.
+        const TAGS = ['br', 'b', 'strong', 'i', 'em', 'u', 'sub', 'sup', 'mark', 's', 'del', 'ins', 'kbd', 'small'];
+        const re = new RegExp('&lt;(/?)(' + TAGS.join('|') + ')\\s*/?&gt;', 'gi');
+        return s.replace(re, function (_m, slash, tag) {
+            const t = tag.toLowerCase();
+            if (t === 'br' || t === 'hr') return '<' + t + '>';
+            return '<' + slash + t + '>';
+        });
+    }
+
     function formatDate(v) {
         if (!v) return '';
         // Joplin uses ISO strings; file mtime is a unix int.
@@ -103,11 +120,70 @@
         });
     }
 
-    // ---------- Minimal Markdown renderer ----------------------------------
-    // Supports: headings, paragraphs, bold/italic, inline code, code fences,
-    // unordered/ordered lists, blockquotes, hr, links, images, line breaks.
+    // ---------- Markdown renderer (marked + DOMPurify) ---------------------
+    // Uses the vendored `marked` parser and sanitizes the output with
+    // DOMPurify to prevent XSS. Falls back to a minimal built-in renderer
+    // if either library failed to load.
+
+    let _markedConfigured = false;
+    function configureMarked() {
+        if (_markedConfigured || !window.marked) return;
+        try {
+            window.marked.setOptions({
+                gfm: true,           // GitHub-flavoured Markdown (tables, strikethrough, autolinks)
+                breaks: true,        // newline -> <br> (Joplin behaviour)
+                headerIds: false,    // no auto id="..." on headings
+                mangle: false,       // don't obfuscate autolink emails
+                smartypants: false,
+            });
+            // Open all links in a new tab with safe rel attributes.
+            const renderer = new window.marked.Renderer();
+            const origLink = renderer.link.bind(renderer);
+            renderer.link = function (href, title, text) {
+                const html = origLink(href, title, text);
+                return html.replace(/^<a /, '<a target="_blank" rel="noopener noreferrer" ');
+            };
+            window.marked.use({ renderer: renderer });
+        } catch (_e) { /* older API – ignore */ }
+        _markedConfigured = true;
+    }
+
+    function sanitizeHtml(html) {
+        if (window.DOMPurify && typeof window.DOMPurify.sanitize === 'function') {
+            return window.DOMPurify.sanitize(html, {
+                USE_PROFILES: { html: true },
+                ADD_ATTR: ['target', 'rel'],
+                FORBID_TAGS: ['style', 'iframe', 'form', 'input', 'object', 'embed', 'script'],
+                FORBID_ATTR: ['onerror', 'onclick', 'onload', 'onmouseover', 'onfocus'],
+            });
+        }
+        return html; // very last-resort fallback
+    }
 
     function renderMarkdown(md) {
+        if (!md) return '';
+        md = String(md).replace(/\r\n?/g, '\n');
+
+        // Preferred path: marked + DOMPurify (loaded as vendor scripts).
+        if (window.marked) {
+            configureMarked();
+            try {
+                const parser = (typeof window.marked.parse === 'function')
+                    ? window.marked.parse
+                    : window.marked;
+                const raw = parser(md);
+                return sanitizeHtml(raw);
+            } catch (e) {
+                // Fall through to legacy renderer below on parser error.
+                console.warn('Joplin: marked failed, falling back to built-in renderer', e);
+            }
+        }
+
+        return renderMarkdownLegacy(md);
+    }
+
+    // Built-in fallback renderer (kept for resilience if vendor libs fail).
+    function renderMarkdownLegacy(md) {
         if (!md) return '';
         md = String(md).replace(/\r\n?/g, '\n');
 
@@ -145,6 +221,8 @@
             // Italic
             s = s.replace(/(^|[\s(])\*([^*\n]+)\*/g, '$1<em>$2</em>');
             s = s.replace(/(^|[\s(])_([^_\n]+)_/g, '$1<em>$2</em>');
+            // Re-allow a small whitelist of inline HTML tags (e.g. <br>, <b>, <sup>)
+            s = unescapeSafeTags(s);
             return s;
         }
 
@@ -187,7 +265,7 @@
                     buf.push(lines[i].replace(/^\s*>\s?/, ''));
                     i++;
                 }
-                out.push('<blockquote>' + renderMarkdown(buf.join('\n')) + '</blockquote>');
+                out.push('<blockquote>' + renderMarkdownLegacy(buf.join('\n')) + '</blockquote>');
                 continue;
             }
 
@@ -251,6 +329,11 @@
         saving: false,
         deleting: false,
         previewMode: false,  // toolbar Preview toggle in the editor
+        sidebarOpen: false,  // mobile slide-in sidebar
+        notebooksCollapsed: false, // collapsible notebooks section in sidebar
+        loading: false,      // global loading overlay (initial fetch / reindex)
+        syncStatus: 'idle',        // 'idle' | 'syncing' | 'ok' | 'error'
+        syncStatusMessage: '',     // tooltip text for the sync pill
     };
 
     function groupIndex(folders, notes) {
@@ -280,7 +363,6 @@
 
     function renderTree(root) {
         root.innerHTML = '';
-        root.appendChild(el('div', { class: 'joplin-tree-title', text: 'Notebooks' }));
 
         const ul = el('ul');
         ul.appendChild(treeItem({ id: '__ALL__', title: 'All notes', parent_id: null }, 0, true));
@@ -307,10 +389,45 @@
         const twisty = isAll ? '' : (hasChildren ? (state.expanded[folder.id] ? '▾' : '▸') : '·');
         const active = state.selectedFolder === folder.id;
 
+        const children = [
+            el('span', { class: 'twisty', text: twisty }),
+            el('span', { class: 'label', text: folder.title, title: folder.title }),
+        ];
+
+        // Inline actions for real notebooks (not for the synthetic "All notes").
+        if (!isAll) {
+            children.push(el('span', { class: 'joplin-tree-actions' }, [
+                el('button', {
+                    class: 'joplin-tree-action',
+                    type: 'button',
+                    title: 'Rename notebook',
+                    'aria-label': 'Rename notebook',
+                    text: 'Rename',
+                    onclick: function (ev) {
+                        ev.stopPropagation();
+                        promptRenameFolder(folder);
+                    },
+                }),
+                el('button', {
+                    class: 'joplin-tree-action danger',
+                    type: 'button',
+                    title: 'Delete notebook',
+                    'aria-label': 'Delete notebook',
+                    text: 'Delete',
+                    onclick: function (ev) {
+                        ev.stopPropagation();
+                        confirmDeleteFolder(folder);
+                    },
+                }),
+            ]));
+        }
+
         const item = el('li', {}, [
             el('div', {
                 class: 'joplin-tree-item' + (active ? ' active' : ''),
                 onclick: function (ev) {
+                    // Ignore clicks that originated inside the inline actions.
+                    if (ev.target.closest && ev.target.closest('.joplin-tree-actions')) return;
                     if (ev.target.classList.contains('twisty') && hasChildren) {
                         state.expanded[folder.id] = !state.expanded[folder.id];
                     } else {
@@ -321,16 +438,43 @@
                     }
                     render();
                 }
-            }, [
-                el('span', { class: 'twisty', text: twisty }),
-                el('span', { class: 'label', text: folder.title, title: folder.title }),
-            ]),
+            }, children),
         ]);
         return item;
     }
 
     function renderList(root) {
         root.innerHTML = '';
+
+        // Compact app header (sidebar)
+        const statusLabel = ({
+            syncing: 'Syncing…',
+            ok:      'Synced',
+            error:   'Failed',
+        })[state.syncStatus] || '';
+        const statusPill = statusLabel
+            ? el('span', {
+                class: 'joplin-sync-pill ' + state.syncStatus,
+                text: statusLabel,
+                title: state.syncStatusMessage || statusLabel,
+            })
+            : null;
+
+        const header = el('div', { class: 'joplin-sidebar-header' }, [
+            el('div', { class: 'joplin-sidebar-brand' }, [
+                el('span', { class: 'joplin-sidebar-title', text: 'Joplin' }),
+                el('span', { class: 'joplin-sidebar-counts',
+                    text: Object.keys(state.notes).length + ' notes' }),
+                statusPill,
+            ].filter(Boolean)),
+            el('button', {
+                class: 'joplin-new-btn',
+                title: 'Create a new note',
+                'aria-label': 'Create a new note',
+                onclick: function () { startCreateNote(); state.sidebarOpen = false; },
+            }, [el('span', { text: '+ New note' })]),
+        ]);
+        root.appendChild(header);
 
         const search = el('div', { class: 'joplin-search' }, [
             el('input', {
@@ -342,25 +486,48 @@
         ]);
         root.appendChild(search);
 
-        const toolbar = el('div', { class: 'joplin-toolbar' }, [
-            el('button', {
-                class: 'primary',
-                text: '+ New note',
-                title: 'Create a new note in the selected notebook',
-                onclick: function () { startCreateNote(); },
-            }),
-            el('button', {
-                text: 'Reload',
-                title: 'Rebuild the Joplin index',
-                onclick: function () { reindex(); },
+        // Collapsible notebooks section (was a separate pane)
+        const notebooks = el('div', { class: 'joplin-notebooks' + (state.notebooksCollapsed ? ' collapsed' : '') });
+        const notebooksHeader = el('button', {
+            class: 'joplin-notebooks-header',
+            type: 'button',
+            'aria-expanded': state.notebooksCollapsed ? 'false' : 'true',
+            onclick: function () {
+                state.notebooksCollapsed = !state.notebooksCollapsed;
+                render();
+            },
+        }, [
+            el('span', { class: 'joplin-notebooks-twisty',
+                text: state.notebooksCollapsed ? '▸' : '▾' }),
+            el('span', { class: 'joplin-notebooks-label', text: 'Notebooks' }),
+            el('span', { class: 'joplin-notebooks-count',
+                text: String(Object.keys(state.folders).length) }),
+            el('span', {
+                class: 'joplin-icon-btn',
+                role: 'button',
+                tabindex: '0',
+                title: 'Create notebook',
+                'aria-label': 'Create notebook',
+                text: '+ New',
+                onclick: function (ev) { ev.stopPropagation(); promptCreateFolder(); },
             }),
             el('span', {
-                class: 'joplin-counts',
-                text: Object.keys(state.notes).length + ' notes · ' +
-                       Object.keys(state.folders).length + ' notebooks',
+                class: 'joplin-icon-btn',
+                role: 'button',
+                tabindex: '0',
+                title: 'Reload index',
+                'aria-label': 'Reload index',
+                text: 'Reload',
+                onclick: function (ev) { ev.stopPropagation(); reindex(); },
             }),
         ]);
-        root.appendChild(toolbar);
+        notebooks.appendChild(notebooksHeader);
+        if (!state.notebooksCollapsed) {
+            const treeWrap = el('div', { class: 'joplin-notebooks-body' });
+            renderTree(treeWrap);
+            notebooks.appendChild(treeWrap);
+        }
+        root.appendChild(notebooks);
 
         let items;
         if (state.searchResults !== null) {
@@ -393,27 +560,64 @@
 
         const ul = el('ul', { class: 'joplin-list' });
         if (items.length === 0) {
-            ul.appendChild(el('li', { class: 'joplin-empty-list',
-                text: state.searchResults !== null ? 'No notes match your search.' : 'No notes in this notebook.' }));
+            const isSearch = state.searchResults !== null;
+            const emptyLi = el('li', { class: 'joplin-empty-list' }, [
+                el('div', { class: 'joplin-empty-list-icon',
+                    text: isSearch ? '🔍' : '📝' }),
+                el('div', { class: 'joplin-empty-list-title',
+                    text: isSearch ? 'No matching notes' : 'No notes yet' }),
+                el('div', { class: 'joplin-empty-list-msg',
+                    text: isSearch
+                        ? 'Try a different search term.'
+                        : 'Create your first note to get started.' }),
+                isSearch ? null : el('button', {
+                    class: 'joplin-empty-list-cta',
+                    text: '+ Create New Note',
+                    onclick: function () { startCreateNote(); },
+                }),
+            ]);
+            ul.appendChild(emptyLi);
         } else {
             items.forEach(function (n) {
                 const active = state.selectedNote === n.id;
+                const title = n.title || '(untitled)';
+                const preview = n.excerpt || firstLineOfBody(n);
                 ul.appendChild(el('li', {
                     class: active ? 'active' : '',
-                    onclick: function () { selectNote(n.id); },
+                    title: title,
+                    onclick: function () { selectNote(n.id); state.sidebarOpen = false; },
                 }, [
-                    el('div', { class: 'title', text: n.title || '(untitled)' }),
+                    el('div', { class: 'title', text: title, title: title }),
+                    preview ? el('div', { class: 'excerpt', text: preview }) : null,
                     el('div', { class: 'meta', text: relativeDate(n.mtime),
                                 title: formatDate(n.mtime) }),
-                    n.excerpt ? el('div', { class: 'excerpt', text: n.excerpt }) : null,
                 ]));
             });
         }
         root.appendChild(ul);
     }
 
+    /** Best-effort short preview from index data (title is excluded if it duplicates). */
+    function firstLineOfBody(n) {
+        const src = n.body_preview || n.preview || '';
+        if (!src) return '';
+        const line = String(src).split('\n').map(function (s) { return s.trim(); })
+            .filter(function (s) { return s && !/^#/.test(s); })[0];
+        return line || '';
+    }
+
     function renderViewer(root) {
         root.innerHTML = '';
+
+        // Mobile sidebar toggle (shows only on small screens via CSS)
+        const menuBtn = el('button', {
+            class: 'joplin-menu-btn',
+            'aria-label': 'Show notes list',
+            title: 'Show notes list',
+            onclick: function () { state.sidebarOpen = !state.sidebarOpen; render(); },
+            text: 'Notes',
+        });
+        root.appendChild(menuBtn);
 
         // Editor takes precedence over the viewer
         if (state.editing && state.editingDraft) {
@@ -422,14 +626,18 @@
         }
 
         if (!state.selectedNote) {
+            const totalNotes = Object.keys(state.notes).length;
             root.appendChild(el('div', { class: 'joplin-empty' }, [
                 el('div', { class: 'joplin-empty-icon', text: '📝' }),
-                el('div', { class: 'joplin-empty-title', text: 'No note selected' }),
+                el('div', { class: 'joplin-empty-title',
+                    text: totalNotes === 0 ? 'No notes yet' : 'No note selected' }),
                 el('div', { class: 'joplin-empty-subtitle',
-                    text: 'Choose a note from the list, or create a brand-new one.' }),
+                    text: totalNotes === 0
+                        ? 'Create your first note and it will sync with all your Joplin clients.'
+                        : 'Choose a note from the list, or create a brand-new one.' }),
                 el('button', {
                     class: 'joplin-empty-cta',
-                    text: '+ New note',
+                    text: '+ Create New Note',
                     onclick: function () { startCreateNote(); },
                 }),
             ]));
@@ -468,8 +676,34 @@
             title: 'Updated ' + formatDate(note.updated_time || note.mtime),
         }));
         const body = el('div', { class: 'joplin-viewer-body' });
-        body.innerHTML = renderMarkdown(note.body || '');
+        // Strip a leading "# Title" heading if it duplicates the metadata title,
+        // so the title doesn't appear twice in the viewer.
+        body.innerHTML = renderMarkdown(stripDuplicateTitle(note.body || '', note.title || ''));
         root.appendChild(body);
+    }
+
+    /**
+     * If the note body's first non-empty line is a Markdown heading whose text
+     * equals the note's metadata title, drop that heading (and a single blank
+     * separator line) so the viewer doesn't display the title twice.
+     */
+    function stripDuplicateTitle(body, title) {
+        if (!body) return '';
+        const t = String(title || '').trim().toLowerCase();
+        if (!t) return body;
+        const lines = String(body).replace(/\r\n?/g, '\n').split('\n');
+        let i = 0;
+        while (i < lines.length && lines[i].trim() === '') i++;
+        if (i >= lines.length) return body;
+        const m = /^\s*(#{1,6})\s+(.+?)\s*#*\s*$/.exec(lines[i]);
+        if (!m) return body;
+        if (m[2].trim().toLowerCase() !== t) return body;
+        // Remove the heading line + a single blank separator if present
+        lines.splice(i, 1);
+        if (i < lines.length && lines[i].trim() === '') {
+            lines.splice(i, 1);
+        }
+        return lines.join('\n');
     }
 
     function renderEditor(root) {
@@ -758,19 +992,20 @@
     function confirmDeleteNote(note) {
         if (state.saving || state.deleting) return;
         const title = (note && note.title) ? note.title : '(untitled)';
-        if (!window.confirm(
-            'Delete "' + title + '"?\n\n' +
-            'The note will be moved into the Joplin trash folder. ' +
-            'It will disappear from every Joplin client on the next sync.'
-        )) {
-            return;
-        }
-        deleteNote(note.id);
+        showConfirm({
+            title: 'Delete note?',
+            message: 'Are you sure you want to delete "' + title + '"? ' +
+                     'It will be moved into the Joplin trash folder and removed from every Joplin client on the next sync.',
+            confirmLabel: 'Delete',
+            danger: true,
+            onConfirm: function () { deleteNote(note.id); },
+        });
     }
 
     function deleteNote(id) {
         if (!id || state.deleting) return;
         state.deleting = true;
+        setSyncStatus('syncing', 'Deleting note…');
         render();
 
         apiSend(apiUrl('/api/note/' + encodeURIComponent(id)), 'DELETE', {})
@@ -784,13 +1019,171 @@
                 if (state.notes && state.notes[id]) {
                     delete state.notes[id];
                 }
-                showInfo('Note deleted');
+                showToast('Note deleted', 'success');
+                setSyncStatus('ok', 'Synced');
                 return loadTree().then(function () { render(); });
             })
             .catch(function (err) {
                 state.deleting = false;
                 const msg = (err.body && err.body.message) || err.message || 'Delete failed';
-                showError(msg);
+                setSyncStatus('error', msg);
+                showToast(msg, 'error');
+                render();
+            });
+    }
+
+    // ---------- Notebook (folder) actions ----------------------------------
+
+    /** Create a notebook under the currently-selected folder (or root). */
+    function promptCreateFolder() {
+        const sel = state.selectedFolder;
+        const parentId = (sel && sel !== '__ALL__' && state.folders[sel]) ? sel : null;
+        const parentLabel = parentId ? state.folders[parentId].title : 'top level';
+
+        showPrompt({
+            title: 'New notebook',
+            message: 'Create a new notebook under "' + parentLabel + '".',
+            placeholder: 'Notebook name',
+            confirmLabel: 'Create',
+            onConfirm: function (value) {
+                const title = (value || '').trim();
+                if (title === '') {
+                    showToast('Notebook name is required', 'error');
+                    return;
+                }
+                createFolder(title, parentId);
+            },
+        });
+    }
+
+    function createFolder(title, parentId) {
+        setSyncStatus('syncing', 'Creating notebook…');
+        apiSend(apiUrl('/api/folder'), 'POST', {
+            title: title,
+            parent_id: parentId || '',
+        })
+            .then(function (res) {
+                showToast('Notebook created', 'success');
+                setSyncStatus('ok', 'Synced');
+                // Auto-expand parent so the new notebook is visible.
+                if (parentId) state.expanded[parentId] = true;
+                return loadTree().then(function () {
+                    if (res && res.id) state.selectedFolder = res.id;
+                    render();
+                });
+            })
+            .catch(function (err) {
+                const msg = (err.body && err.body.message) || err.message || 'Create failed';
+                setSyncStatus('error', msg);
+                showToast(msg, 'error');
+            });
+    }
+
+    function promptRenameFolder(folder) {
+        showPrompt({
+            title: 'Rename notebook',
+            message: 'Enter a new name for "' + (folder.title || '(untitled)') + '".',
+            initialValue: folder.title || '',
+            placeholder: 'Notebook name',
+            confirmLabel: 'Rename',
+            onConfirm: function (value) {
+                const title = (value || '').trim();
+                if (title === '') {
+                    showToast('Notebook name is required', 'error');
+                    return;
+                }
+                if (title === (folder.title || '').trim()) return; // no-op
+                renameFolder(folder.id, title);
+            },
+        });
+    }
+
+    function renameFolder(id, title) {
+        setSyncStatus('syncing', 'Renaming…');
+        apiSend(apiUrl('/api/folder/' + encodeURIComponent(id)), 'PUT', { title: title })
+            .then(function () {
+                showToast('Notebook renamed', 'success');
+                setSyncStatus('ok', 'Synced');
+                return loadTree().then(function () { render(); });
+            })
+            .catch(function (err) {
+                const msg = (err.body && err.body.message) || err.message || 'Rename failed';
+                setSyncStatus('error', msg);
+                showToast(msg, 'error');
+            });
+    }
+
+    /**
+     * Confirm + delete a notebook. Fetches descendant counts first so the
+     * confirmation dialog can show the user exactly what they're about to
+     * lose. The backend cascades the delete to every sub-notebook + note.
+     */
+    function confirmDeleteFolder(folder) {
+        if (state.deleting) return;
+        const title = folder.title || '(untitled)';
+
+        // Best-effort — if the count fails, still let the user proceed
+        // with a generic warning.
+        fetchJson(apiUrl('/api/folder/' + encodeURIComponent(folder.id) + '/descendants'))
+            .catch(function () { return { folders: 0, notes: 0 }; })
+            .then(function (counts) {
+                const subFolders = counts.folders || 0;
+                const subNotes   = counts.notes   || 0;
+                let extra = '';
+                if (subNotes > 0 || subFolders > 0) {
+                    const parts = [];
+                    if (subNotes   > 0) parts.push(subNotes + ' note' + (subNotes === 1 ? '' : 's'));
+                    if (subFolders > 0) parts.push(subFolders + ' sub-notebook' + (subFolders === 1 ? '' : 's'));
+                    extra = ' This will also delete ' + parts.join(' and ') + ' inside it.';
+                }
+                showConfirm({
+                    title: 'Delete notebook?',
+                    message: 'Are you sure you want to delete "' + title + '"?' + extra +
+                             ' All affected files are moved to the Joplin trash folder and will be removed from every Joplin client on the next sync.',
+                    confirmLabel: 'Delete',
+                    danger: true,
+                    onConfirm: function () { deleteFolder(folder.id); },
+                });
+            });
+    }
+
+    function deleteFolder(id) {
+        if (!id || state.deleting) return;
+        state.deleting = true;
+        setSyncStatus('syncing', 'Deleting notebook…');
+        render();
+
+        apiSend(apiUrl('/api/folder/' + encodeURIComponent(id)), 'DELETE', {})
+            .then(function (res) {
+                state.deleting = false;
+                // If the deleted notebook (or one of its descendants) was the
+                // currently-selected one, fall back to "All notes".
+                if (state.selectedFolder === id ||
+                    (state.folders[state.selectedFolder] &&
+                     !state.folders[state.selectedFolder]) /* no-op */) {
+                    state.selectedFolder = '__ALL__';
+                }
+                state.selectedNote = null;
+                state.loadedNote   = null;
+
+                const tn = (res && res.trashed_notes)   || 0;
+                const tf = (res && res.trashed_folders) || 0;
+                const total = tn + tf;
+                showToast('Notebook deleted (' + total + ' item' + (total === 1 ? '' : 's') + ')', 'success');
+                setSyncStatus('ok', 'Synced');
+                return loadTree().then(function () {
+                    // If selectedFolder no longer exists in fresh index, reset.
+                    if (state.selectedFolder !== '__ALL__' && !state.folders[state.selectedFolder]) {
+                        state.selectedFolder = '__ALL__';
+                    }
+                    render();
+                });
+            })
+            .catch(function (err) {
+                state.deleting = false;
+                const msg = (err.body && err.body.message) || err.message || 'Delete failed';
+                setSyncStatus('error', msg);
+                showToast(msg, 'error');
                 render();
             });
     }
@@ -832,6 +1225,7 @@
             state.saving = false;
             state.editing = false;
             state.editingDraft = null;
+            showToast(d.isNew ? 'Note created' : 'Note saved', 'success');
 
             // Reload the index so the note appears / is re-sorted, then select it.
             return loadTree().then(function () {
@@ -900,7 +1294,9 @@
         // Optimistically clear any stale cached state so the UI shows progress.
         const prevSelected = state.selectedNote;
         state.loadedNote = null;
-        renderList(app.list);
+        state.loading = true;
+        setSyncStatus('syncing', 'Refreshing index…');
+        render();
         return fetchJson(apiUrl('/api/reindex'), { method: 'POST' })
             .then(function (resp) {
                 if (window.console && console.info) {
@@ -909,6 +1305,9 @@
                 return loadTree();
             })
             .then(function () {
+                state.loading = false;
+                setSyncStatus('ok', 'Synced');
+                showToast('Index refreshed', 'success');
                 // If the previously-selected note still exists, re-select it.
                 if (prevSelected && state.notes[prevSelected]) {
                     selectNote(prevSelected);
@@ -918,7 +1317,12 @@
                     render();
                 }
             })
-            .catch(function (err) { showError('Reindex failed: ' + err.message); });
+            .catch(function (err) {
+                state.loading = false;
+                setSyncStatus('error', err.message || 'Reindex failed');
+                render();
+                showToast('Reindex failed: ' + err.message, 'error');
+            });
     }
 
     function loadTree() {
@@ -941,25 +1345,48 @@
 
     // ---------- Layout / errors -------------------------------------------
 
-    const app = { root: null, tree: null, list: null, viewer: null };
+    const app = { root: null, list: null, viewer: null, overlay: null, backdrop: null };
 
     function buildLayout() {
         const root = document.getElementById('joplin-app');
         root.innerHTML = '';
         app.root = root;
-        app.tree   = el('div', { class: 'joplin-pane joplin-pane-tree' });
+
+        // Two-panel: sidebar (notebooks + list) | main (viewer/editor)
         app.list   = el('div', { class: 'joplin-pane joplin-pane-list' });
         app.viewer = el('div', { class: 'joplin-pane joplin-pane-viewer' });
-        root.appendChild(app.tree);
+
+        app.backdrop = el('div', {
+            class: 'joplin-backdrop',
+            onclick: function () { state.sidebarOpen = false; render(); },
+        });
+
         root.appendChild(app.list);
+        root.appendChild(app.backdrop);
         root.appendChild(app.viewer);
+
+        // Global loading overlay
+        app.overlay = el('div', { class: 'joplin-overlay' }, [
+            el('div', { class: 'joplin-overlay-card' }, [
+                el('div', { class: 'joplin-overlay-spinner' }),
+                el('div', { class: 'joplin-overlay-text', text: 'Working…' }),
+            ]),
+        ]);
+        root.appendChild(app.overlay);
     }
 
     function render() {
         if (!app.root) return;
-        renderTree(app.tree);
         renderList(app.list);
         renderViewer(app.viewer);
+        // Sidebar / overlay state
+        app.root.classList.toggle('joplin-sidebar-open', !!state.sidebarOpen);
+        app.root.classList.toggle('joplin-busy', !!(state.loading || state.deleting));
+        if (app.overlay) {
+            app.overlay.classList.toggle('visible', !!(state.loading || state.deleting));
+            const t = app.overlay.querySelector('.joplin-overlay-text');
+            if (t) t.textContent = state.deleting ? 'Deleting…' : (state.loading ? 'Refreshing…' : 'Working…');
+        }
     }
 
     function renderNotFound(resp) {
@@ -1001,29 +1428,172 @@
         ]));
     }
 
-    function showError(msg) {
-        const root = document.getElementById('joplin-app');
-        const existing = root.querySelector('.joplin-error');
-        if (existing) existing.remove();
-        root.appendChild(el('div', { class: 'joplin-error', text: msg }));
-    }
+    function showError(msg) { showToast(msg, 'error', 5000); }
+    function showInfo(msg)  { showToast(msg, 'info'); }
 
-    function showInfo(msg) {
-        const root = document.getElementById('joplin-app');
+    /** Toast variants: 'info' | 'success' | 'error'. */
+    function showToast(msg, variant, duration) {
+        const root = document.getElementById('joplin-app') || document.body;
         const existing = root.querySelector('.joplin-toast');
         if (existing) existing.remove();
-        const toast = el('div', { class: 'joplin-toast', text: msg });
+        const v = variant || 'info';
+        const icon = v === 'success' ? '✓' : v === 'error' ? '!' : 'i';
+        const toast = el('div', { class: 'joplin-toast joplin-toast-' + v, role: 'status' }, [
+            el('span', { class: 'joplin-toast-icon', text: icon }),
+            el('span', { class: 'joplin-toast-msg', text: msg }),
+        ]);
         root.appendChild(toast);
-        setTimeout(function () { if (toast.parentNode) toast.remove(); }, 2500);
+        // Force reflow then animate in
+        requestAnimationFrame(function () { toast.classList.add('visible'); });
+        setTimeout(function () {
+            if (!toast.parentNode) return;
+            toast.classList.remove('visible');
+            setTimeout(function () { if (toast.parentNode) toast.remove(); }, 200);
+        }, duration || 2500);
+    }
+
+    /** Custom confirmation modal — replaces window.confirm() for richer UX. */
+    function showConfirm(opts) {
+        opts = opts || {};
+        const root = document.getElementById('joplin-app') || document.body;
+        const existing = root.querySelector('.joplin-modal-backdrop');
+        if (existing) existing.remove();
+
+        function close() {
+            if (modal.parentNode) modal.remove();
+            document.removeEventListener('keydown', onKey);
+        }
+        function onKey(ev) {
+            if (ev.key === 'Escape') { ev.preventDefault(); close(); }
+            if (ev.key === 'Enter')  { ev.preventDefault(); close(); if (opts.onConfirm) opts.onConfirm(); }
+        }
+
+        const confirmBtn = el('button', {
+            class: 'joplin-modal-btn ' + (opts.danger ? 'danger' : 'primary'),
+            text: opts.confirmLabel || 'Confirm',
+            onclick: function () { close(); if (opts.onConfirm) opts.onConfirm(); },
+        });
+        const cancelBtn = el('button', {
+            class: 'joplin-modal-btn',
+            text: opts.cancelLabel || 'Cancel',
+            onclick: function () { close(); if (opts.onCancel) opts.onCancel(); },
+        });
+
+        const modal = el('div', { class: 'joplin-modal-backdrop',
+            onclick: function (ev) { if (ev.target === modal) close(); } }, [
+            el('div', { class: 'joplin-modal', role: 'dialog', 'aria-modal': 'true' }, [
+                el('div', { class: 'joplin-modal-header' }, [
+                    el('h2', { class: 'joplin-modal-title', text: opts.title || 'Confirm' }),
+                ]),
+                el('div', { class: 'joplin-modal-body', text: opts.message || '' }),
+                el('div', { class: 'joplin-modal-actions' }, [cancelBtn, confirmBtn]),
+            ]),
+        ]);
+        root.appendChild(modal);
+        document.addEventListener('keydown', onKey);
+        setTimeout(function () { confirmBtn.focus(); }, 0);
+    }
+
+    /**
+     * Modal text-input prompt — used for create/rename notebook flows.
+     * Replaces window.prompt() so we get consistent styling and Esc/Enter
+     * handling across the app.
+     */
+    function showPrompt(opts) {
+        opts = opts || {};
+        const root = document.getElementById('joplin-app') || document.body;
+        const existing = root.querySelector('.joplin-modal-backdrop');
+        if (existing) existing.remove();
+
+        function close() {
+            if (modal.parentNode) modal.remove();
+            document.removeEventListener('keydown', onKey);
+        }
+        function submit() {
+            const v = input.value;
+            close();
+            if (opts.onConfirm) opts.onConfirm(v);
+        }
+        function onKey(ev) {
+            if (ev.key === 'Escape') { ev.preventDefault(); close(); }
+            if (ev.key === 'Enter')  { ev.preventDefault(); submit(); }
+        }
+
+        const input = el('input', {
+            type: 'text',
+            class: 'joplin-modal-input',
+            placeholder: opts.placeholder || '',
+            value: opts.initialValue || '',
+            'aria-label': opts.title || 'Value',
+        });
+        const confirmBtn = el('button', {
+            class: 'joplin-modal-btn primary',
+            text: opts.confirmLabel || 'OK',
+            onclick: submit,
+        });
+        const cancelBtn = el('button', {
+            class: 'joplin-modal-btn',
+            text: opts.cancelLabel || 'Cancel',
+            onclick: function () { close(); if (opts.onCancel) opts.onCancel(); },
+        });
+
+        const modal = el('div', { class: 'joplin-modal-backdrop',
+            onclick: function (ev) { if (ev.target === modal) close(); } }, [
+            el('div', { class: 'joplin-modal', role: 'dialog', 'aria-modal': 'true' }, [
+                el('div', { class: 'joplin-modal-header' }, [
+                    el('h2', { class: 'joplin-modal-title', text: opts.title || 'Enter value' }),
+                ]),
+                el('div', { class: 'joplin-modal-body' }, [
+                    opts.message ? el('p', { class: 'joplin-modal-message', text: opts.message }) : null,
+                    input,
+                ].filter(Boolean)),
+                el('div', { class: 'joplin-modal-actions' }, [cancelBtn, confirmBtn]),
+            ]),
+        ]);
+        root.appendChild(modal);
+        document.addEventListener('keydown', onKey);
+        setTimeout(function () {
+            input.focus();
+            // Pre-select existing text so rename overwriting is one keystroke.
+            if (input.value) input.select();
+        }, 0);
+    }
+
+    /**
+     * Set the small sync-status pill rendered in the sidebar header.
+     * Levels: 'idle' | 'syncing' | 'ok' | 'error'.
+     * `ok` and `error` automatically fade back to `idle` after 3s so the
+     * pill doesn't permanently sit on the last result.
+     */
+    let _syncStatusTimer = null;
+    function setSyncStatus(level, message) {
+        state.syncStatus = level || 'idle';
+        state.syncStatusMessage = message || '';
+        if (_syncStatusTimer) { clearTimeout(_syncStatusTimer); _syncStatusTimer = null; }
+        if (level === 'ok' || level === 'error') {
+            _syncStatusTimer = setTimeout(function () {
+                state.syncStatus = 'idle';
+                state.syncStatusMessage = '';
+                _syncStatusTimer = null;
+                render();
+            }, 3000);
+        }
+        render();
     }
 
     // ---------- Boot --------------------------------------------------------
 
     function boot() {
         buildLayout();
-        loadTree().catch(function (err) {
-            showError('Failed to load Joplin index: ' + err.message);
-        });
+        state.loading = true;
+        render();
+        loadTree()
+            .then(function () { state.loading = false; render(); })
+            .catch(function (err) {
+                state.loading = false;
+                render();
+                showError('Failed to load Joplin index: ' + err.message);
+            });
     }
 
     if (document.readyState === 'loading') {

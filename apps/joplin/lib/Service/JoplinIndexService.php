@@ -27,12 +27,14 @@ class JoplinIndexService {
 
     private const CONFIG_ROOT_KEY = 'joplin_root_path';
     /** Bump to invalidate cached indexes after format changes. */
-    private const INDEX_VERSION   = 2;
+    private const INDEX_VERSION   = 3;
     /**
      * Very short TTL — only used to coalesce bursts of requests on the same
-     * page load. Real freshness comes from comparing the cached `built_at`
-     * against the root folder's current mtime; if the folder changed, we
-     * always rebuild. This guarantees newly-synced notes appear on reload.
+     * page load. Real freshness comes from comparing the cached fingerprint
+     * (file count + max child mtime) against the current state of the root
+     * folder; if anything changed, we always rebuild. This guarantees newly
+     * synced notes appear on reload even when the storage backend does not
+     * bump the parent directory mtime.
      */
     private const CACHE_TTL       = 5;
 
@@ -148,14 +150,35 @@ class JoplinIndexService {
 
         $rootMtime = $root->getMTime();
 
+        // Build a fingerprint from the actual .md children so we detect
+        // newly-synced notes even when the storage backend does not bump
+        // the parent folder's mtime.
+        $children = $root->getDirectoryListing();
+        $mdFiles  = [];
+        $maxChildMtime = 0;
+        foreach ($children as $child) {
+            if (!($child instanceof File)) {
+                continue;
+            }
+            if (!preg_match('/^[0-9a-f]{32}\.md$/i', $child->getName())) {
+                continue;
+            }
+            $mdFiles[] = $child;
+            $cm = $child->getMTime();
+            if ($cm > $maxChildMtime) {
+                $maxChildMtime = $cm;
+            }
+        }
+        $fingerprint = count($mdFiles) . ':' . $maxChildMtime . ':' . $rootMtime;
+
         if (!$forceRebuild) {
             $cached = $this->cache->get($this->cacheKey($userId));
             if (is_array($cached)
-                && ($cached['_v'] ?? 0) === self::INDEX_VERSION
-                && ($cached['root_mtime'] ?? -1) === $rootMtime
-                && ($cached['root'] ?? '') === $root->getPath()
+                && ($cached['_v']          ?? 0)  === self::INDEX_VERSION
+                && ($cached['fingerprint'] ?? '') === $fingerprint
+                && ($cached['root']        ?? '') === $root->getPath()
             ) {
-                unset($cached['_v'], $cached['root_mtime']);
+                unset($cached['_v'], $cached['fingerprint'], $cached['root_mtime']);
                 return $cached;
             }
         }
@@ -165,14 +188,7 @@ class JoplinIndexService {
         $scanned = 0;
         $skipped = 0;
 
-        foreach ($root->getDirectoryListing() as $child) {
-            if (!($child instanceof File)) {
-                continue;
-            }
-            $name = $child->getName();
-            if (!preg_match('/^[0-9a-f]{32}\.md$/i', $name)) {
-                continue;
-            }
+        foreach ($mdFiles as $child) {
             $scanned++;
 
             try {
@@ -232,7 +248,7 @@ class JoplinIndexService {
         $this->logger->info('Joplin: index built', [
             'user'         => $userId,
             'root'         => $root->getPath(),
-            'root_mtime'   => $rootMtime,
+            'fingerprint'  => $fingerprint,
             'scanned'      => $scanned,
             'skipped'      => $skipped,
             'notes'        => count($notes),
@@ -242,7 +258,7 @@ class JoplinIndexService {
 
         $this->cache->set(
             $this->cacheKey($userId),
-            $index + ['_v' => self::INDEX_VERSION, 'root_mtime' => $rootMtime],
+            $index + ['_v' => self::INDEX_VERSION, 'fingerprint' => $fingerprint],
             self::CACHE_TTL
         );
 

@@ -263,9 +263,353 @@ class JoplinWriter {
         return ['id' => $id, 'trashed_path' => $trash->getPath() . '/' . $trashName];
     }
 
+    // ==================================================================
+    //  Notebook (Joplin folder, type_ == 2) operations
+    //
+    //  Joplin's filesystem sync stores notebooks the same way as notes:
+    //  flat <32hex>.md files in the sync root, distinguished by `type_: 2`.
+    //  We therefore reuse the same write/move-to-trash mechanics, with a
+    //  cascade for delete (children must follow their parent or they end
+    //  up orphaned in every Joplin client).
+    // ==================================================================
+
+    /**
+     * Create a new Joplin notebook (type_: 2).
+     *
+     * @return array{id:string, path:string}
+     * @throws \RuntimeException
+     */
+    public function createFolder(string $userId, ?string $parentId, string $title): array {
+        $title = $this->cleanTitle($title);
+        if ($title === '') {
+            throw new \RuntimeException('Notebook must have a title');
+        }
+        if ($parentId !== null && !$this->isValidJoplinId($parentId)) {
+            throw new \RuntimeException('Invalid parent_id');
+        }
+
+        $root = $this->index->resolveRoot($userId);
+        if ($root === null) {
+            throw new \RuntimeException('No Joplin sync folder configured for this user');
+        }
+        $this->assertNotLocked($root);
+
+        if ($parentId !== null) {
+            $idx = $this->index->getIndex($userId);
+            if ($idx === null || !isset($idx['folders'][$parentId])) {
+                throw new \RuntimeException('Parent notebook not found');
+            }
+        }
+
+        $id  = $this->generateId();
+        $iso = $this->isoNow();
+        $contents = $this->buildNewFolderFile($id, $parentId, $title, $iso);
+        $filename = $id . '.md';
+
+        try {
+            if ($root->nodeExists($filename)) {
+                throw new \RuntimeException('Generated id already exists, aborting');
+            }
+            $file = $root->newFile($filename, $contents);
+        } catch (\Throwable $e) {
+            $this->logger->error('Joplin: failed to create notebook', [
+                'user' => $userId, 'id' => $id, 'exception' => $e,
+            ]);
+            throw new \RuntimeException('Could not write notebook: ' . $e->getMessage(), 0, $e);
+        }
+
+        $this->index->getIndex($userId, true);
+
+        $this->logger->info('Joplin: notebook created', [
+            'user' => $userId, 'id' => $id, 'parent' => $parentId, 'path' => $file->getPath(),
+        ]);
+
+        return ['id' => $id, 'path' => $file->getPath()];
+    }
+
+    /**
+     * Rename an existing notebook (type_: 2). Only the title (first line) and
+     * the timestamps are touched; every other metadata key is preserved.
+     *
+     * @return array{id:string, mtime:int}
+     * @throws \RuntimeException
+     */
+    public function renameFolder(string $userId, string $id, string $title): array {
+        if (!$this->isValidJoplinId($id)) {
+            throw new \RuntimeException('Invalid notebook id');
+        }
+        $title = $this->cleanTitle($title);
+        if ($title === '') {
+            throw new \RuntimeException('Notebook must have a title');
+        }
+
+        $root = $this->index->resolveRoot($userId);
+        if ($root === null) {
+            throw new \RuntimeException('No Joplin sync folder configured for this user');
+        }
+        $this->assertNotLocked($root);
+
+        $filename = $id . '.md';
+        try {
+            $file = $root->get($filename);
+        } catch (NotFoundException $e) {
+            throw new \RuntimeException('Notebook not found');
+        }
+        if (!($file instanceof File)) {
+            throw new \RuntimeException('Notebook path is not a file');
+        }
+
+        $current = $file->getContent();
+        $parsed  = $this->parser->parse($current);
+        if (($parsed['type'] ?? 0) !== 2) {
+            throw new \RuntimeException('Refusing to rename a non-notebook entry (type_ != 2)');
+        }
+        if (($parsed['id'] ?? '') !== $id) {
+            throw new \RuntimeException('Notebook id mismatch between filename and metadata');
+        }
+
+        $metadata = $parsed['metadata'];
+        $iso = $this->isoNow();
+        $metadata['updated_time']      = $iso;
+        $metadata['user_updated_time'] = $iso;
+
+        // Notebooks have no body — pass empty string.
+        $newContents = $this->buildFileFromParts($title, '', $metadata);
+
+        try {
+            $file->putContent($newContents);
+        } catch (\Throwable $e) {
+            $this->logger->error('Joplin: failed to rename notebook', [
+                'user' => $userId, 'id' => $id, 'exception' => $e,
+            ]);
+            throw new \RuntimeException('Could not save notebook: ' . $e->getMessage(), 0, $e);
+        }
+
+        $this->index->getIndex($userId, true);
+
+        $this->logger->info('Joplin: notebook renamed', [
+            'user' => $userId, 'id' => $id, 'title' => $title,
+        ]);
+
+        return ['id' => $id, 'mtime' => $file->getMTime()];
+    }
+
+    /**
+     * Soft-delete a notebook (type_: 2) and ALL of its descendants
+     * (sub-notebooks + notes) by moving every file into `.joplin-trash/`.
+     *
+     * Why cascade?
+     *  - Joplin treats notebook deletion as cascading. If we trashed only
+     *    the notebook file, every Joplin client would see the parent gone
+     *    but still see the orphan notes (with parent_id pointing to a
+     *    non-existent folder), which renders inconsistently across clients.
+     *  - By trashing the whole subtree atomically, every client converges
+     *    on a clean state on its next sync.
+     *  - All bytes are preserved in `.joplin-trash/` (each file timestamped),
+     *    so an admin can restore any individual entry by moving it back.
+     *
+     * @return array{id:string, trashed_folders:int, trashed_notes:int, items:array<int,array{id:string,kind:string,trashed_path:string}>}
+     * @throws \RuntimeException
+     */
+    public function deleteFolder(string $userId, string $id): array {
+        if (!$this->isValidJoplinId($id)) {
+            throw new \RuntimeException('Invalid notebook id');
+        }
+
+        $root = $this->index->resolveRoot($userId);
+        if ($root === null) {
+            throw new \RuntimeException('No Joplin sync folder configured for this user');
+        }
+        $this->assertNotLocked($root);
+
+        $idx = $this->index->getIndex($userId);
+        if ($idx === null || !isset($idx['folders'][$id])) {
+            throw new \RuntimeException('Notebook not found');
+        }
+
+        // Build descendant set (BFS over the folders index).
+        $folderIds = [$id];
+        $queue     = [$id];
+        $childMap  = [];   // parent_id -> [folder_id]
+        foreach ($idx['folders'] as $fid => $f) {
+            $p = $f['parent_id'] ?? '';
+            if ($p === '') { continue; }
+            $childMap[$p][] = $fid;
+        }
+        while ($queue) {
+            $cur = array_shift($queue);
+            foreach ($childMap[$cur] ?? [] as $childId) {
+                if (in_array($childId, $folderIds, true)) { continue; }
+                $folderIds[] = $childId;
+                $queue[]     = $childId;
+            }
+        }
+
+        // Collect notes that live in any of the affected notebooks.
+        $noteIds = [];
+        foreach ($idx['notes'] as $nid => $n) {
+            if (in_array($n['parent_id'] ?? '', $folderIds, true)) {
+                $noteIds[] = $nid;
+            }
+        }
+
+        // Resolve / create trash folder once.
+        $trash = $this->ensureTrash($root);
+
+        $items = [];
+        $stamp = gmdate('Ymd-His');
+
+        // Move notes first, then folders (order doesn't matter for sync,
+        // but we want a stable, predictable trash listing).
+        foreach ($noteIds as $nid) {
+            $moved = $this->moveToTrash($root, $trash, $nid, $stamp);
+            if ($moved !== null) {
+                $items[] = ['id' => $nid, 'kind' => 'note', 'trashed_path' => $moved];
+            }
+        }
+        foreach ($folderIds as $fid) {
+            $moved = $this->moveToTrash($root, $trash, $fid, $stamp);
+            if ($moved !== null) {
+                $items[] = ['id' => $fid, 'kind' => 'folder', 'trashed_path' => $moved];
+            }
+        }
+
+        $this->index->getIndex($userId, true);
+
+        $trashedNotes   = count(array_filter($items, fn ($i) => $i['kind'] === 'note'));
+        $trashedFolders = count(array_filter($items, fn ($i) => $i['kind'] === 'folder'));
+
+        $this->logger->info('Joplin: notebook (cascading) trashed', [
+            'user' => $userId, 'id' => $id,
+            'trashed_folders' => $trashedFolders,
+            'trashed_notes'   => $trashedNotes,
+        ]);
+
+        return [
+            'id'              => $id,
+            'trashed_folders' => $trashedFolders,
+            'trashed_notes'   => $trashedNotes,
+            'items'           => $items,
+        ];
+    }
+
+    /**
+     * Count direct + indirect descendants of a notebook without modifying
+     * anything — used by the UI to surface a meaningful "this will delete
+     * X notes / Y notebooks" warning before the user confirms.
+     *
+     * @return array{folders:int, notes:int}
+     */
+    public function countDescendants(string $userId, string $id): array {
+        if (!$this->isValidJoplinId($id)) {
+            return ['folders' => 0, 'notes' => 0];
+        }
+        $idx = $this->index->getIndex($userId);
+        if ($idx === null || !isset($idx['folders'][$id])) {
+            return ['folders' => 0, 'notes' => 0];
+        }
+
+        $folderIds = [$id];
+        $queue     = [$id];
+        $childMap  = [];
+        foreach ($idx['folders'] as $fid => $f) {
+            $p = $f['parent_id'] ?? '';
+            if ($p === '') { continue; }
+            $childMap[$p][] = $fid;
+        }
+        while ($queue) {
+            $cur = array_shift($queue);
+            foreach ($childMap[$cur] ?? [] as $cid) {
+                if (in_array($cid, $folderIds, true)) { continue; }
+                $folderIds[] = $cid;
+                $queue[]     = $cid;
+            }
+        }
+        $noteCount = 0;
+        foreach ($idx['notes'] as $n) {
+            if (in_array($n['parent_id'] ?? '', $folderIds, true)) { $noteCount++; }
+        }
+        // -1 because we don't count the notebook the user explicitly clicked.
+        return ['folders' => max(0, count($folderIds) - 1), 'notes' => $noteCount];
+    }
+
+    private function ensureTrash(Folder $root): Folder {
+        try {
+            $trash = $root->get('.joplin-trash');
+            if ($trash instanceof Folder) {
+                return $trash;
+            }
+            throw new \RuntimeException('.joplin-trash exists but is not a folder');
+        } catch (NotFoundException $e) {
+            return $root->newFolder('.joplin-trash');
+        }
+    }
+
+    /**
+     * Move a single Joplin entry (note or folder) into the trash folder.
+     * Safe-no-op (returns null) if the file does not exist.
+     *
+     * @return string|null  trashed absolute path, or null on miss.
+     */
+    private function moveToTrash(Folder $root, Folder $trash, string $id, string $stamp): ?string {
+        $filename = $id . '.md';
+        try {
+            $file = $root->get($filename);
+        } catch (NotFoundException $e) {
+            return null;
+        }
+        if (!($file instanceof File)) {
+            return null;
+        }
+        $trashName = $id . '.' . $stamp . '.md';
+        if ($trash->nodeExists($trashName)) {
+            $trashName = $id . '.' . $stamp . '-' . substr(bin2hex(random_bytes(3)), 0, 6) . '.md';
+        }
+        try {
+            $file->move($trash->getPath() . '/' . $trashName);
+        } catch (\Throwable $e) {
+            $this->logger->error('Joplin: failed to trash entry during cascade', [
+                'id' => $id, 'exception' => $e,
+            ]);
+            throw new \RuntimeException('Could not delete entry ' . $id . ': ' . $e->getMessage(), 0, $e);
+        }
+        return $trash->getPath() . '/' . $trashName;
+    }
+
     // ------------------------------------------------------------------
     //  File-format builders
     // ------------------------------------------------------------------
+
+    /**
+     * Build a fresh Joplin notebook file (type_: 2). Mirrors the canonical
+     * key set produced by joplin-desktop for folder entries.
+     */
+    private function buildNewFolderFile(
+        string $id,
+        ?string $parentId,
+        string $title,
+        string $isoNow
+    ): string {
+        $metadata = [
+            'id'                     => $id,
+            'created_time'           => $isoNow,
+            'updated_time'           => $isoNow,
+            'user_created_time'      => $isoNow,
+            'user_updated_time'      => $isoNow,
+            'encryption_cipher_text' => '',
+            'encryption_applied'     => '0',
+            'parent_id'              => $parentId ?? '',
+            'is_shared'              => '0',
+            'share_id'               => '',
+            'master_key_id'          => '',
+            'icon'                   => '',
+            'user_data'              => '',
+            'deleted_time'           => '0',
+            'type_'                  => '2',           // 2 = folder (notebook)
+        ];
+
+        return $this->buildFileFromParts($title, '', $metadata);
+    }
 
     /**
      * Build a fresh Joplin sync file. Uses the canonical key set produced

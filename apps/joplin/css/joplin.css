@@ -1,77 +1,227 @@
 /* =====================================================================
-   Joplin app — Notes-style three-pane layout
-   notebook tree | notes list | viewer / editor
+   Joplin app — two-panel layout (sidebar | viewer/editor)
    ===================================================================== */
 
-/* Fill the NC content area exactly — no fixed/absolute offsets so we don't
- * leave a blue gap under the navigation bar on NC33+. */
-#content {
-    padding: 0 !important;
-}
-#app-content {
-    padding: 0 !important;
-}
+#content     { padding: 0 !important; }
+#app-content { padding: 0 !important; }
+
 #joplin-app {
     position: absolute;
     inset: 0;
     display: flex;
     background: var(--color-main-background);
     color: var(--color-main-text);
-    font-family: var(--font-face, system-ui, -apple-system, "Segoe UI", sans-serif);
+    font-family: var(--font-face, system-ui, -apple-system, "Segoe UI", "Roboto",
+                 "Helvetica Neue", sans-serif);
+    font-size: 14px;
+    line-height: 1.5;
+    overflow: hidden;
 }
 
+/* ---------- Panes ---------- */
 .joplin-pane {
     overflow-y: auto;
-    border-right: 1px solid var(--color-border);
     background: var(--color-main-background);
+    box-sizing: border-box;
 }
-.joplin-pane-tree {
-    flex: 0 0 240px;
-    min-width: 200px;
-    padding: 16px 12px;
-    background: var(--color-background-dark, #f5f5f5);
-}
+
 .joplin-pane-list {
-    flex: 0 0 340px;
+    flex: 0 0 320px;
+    width: 320px;
     min-width: 280px;
-    padding: 0;
+    max-width: 360px;
+    border-right: 1px solid var(--color-border);
     display: flex;
     flex-direction: column;
+    overflow: hidden;
+    background: var(--color-background-dark, #f7f8fa);
 }
+
 .joplin-pane-viewer {
     flex: 1 1 auto;
-    border-right: none;
-    padding: 28px 40px;
+    min-width: 0;
+    padding: 28px 36px 36px;
     overflow-y: auto;
     display: flex;
     flex-direction: column;
 }
 
-/* ---------- Sidebar / notebook tree ---------- */
-.joplin-tree-title,
-.joplin-list-header {
+/* ---------- Sidebar header (brand + New note) ---------- */
+.joplin-sidebar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 14px 14px 12px;
+    background: var(--color-main-background);
+    border-bottom: 1px solid var(--color-border);
+}
+.joplin-sidebar-brand {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    min-width: 0;
+}
+.joplin-sidebar-title {
+    font-size: 16px;
     font-weight: 700;
-    padding: 6px 10px;
+    letter-spacing: -0.01em;
+    color: var(--color-main-text);
+}
+.joplin-sidebar-counts {
+    font-size: 11px;
+    font-weight: 600;
     color: var(--color-text-maxcontrast);
     text-transform: uppercase;
-    font-size: 11px;
-    letter-spacing: 0.6px;
+    letter-spacing: 0.4px;
 }
+.joplin-new-btn {
+    padding: 7px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    border-radius: 999px;
+    border: none;
+    background: var(--color-primary-element);
+    color: var(--color-primary-element-text);
+    cursor: pointer;
+        transition: all 0.2s cubic-bezier(0.2, 0.8, 0.3, 1);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+    white-space: nowrap;
+}
+    .joplin-new-btn:hover {
+        filter: brightness(1.08);
+        transform: scale(1.04);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    .joplin-new-btn:active {
+        transform: scale(0.98);
+        box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+    }
+
+/* ---------- Search ---------- */
+.joplin-search {
+    padding: 10px 14px;
+    background: var(--color-main-background);
+    border-bottom: 1px solid var(--color-border);
+}
+.joplin-search input {
+    width: 100%;
+    padding: 8px 12px;
+    box-sizing: border-box;
+    border-radius: 8px;
+    border: 1px solid var(--color-border);
+    background: var(--color-background-dark, #f1f3f5);
+    font-size: 13px;
+    color: var(--color-main-text);
+    transition: border-color 0.15s, background 0.15s;
+}
+.joplin-search input:focus {
+    outline: none;
+    border-color: var(--color-primary-element);
+    background: var(--color-main-background);
+}
+
+/* ---------- Notebooks (collapsible) ---------- */
+.joplin-notebooks {
+    border-bottom: 1px solid var(--color-border);
+    background: var(--color-main-background);
+    flex: 0 0 auto;
+    max-height: 38vh;
+    display: flex;
+    flex-direction: column;
+}
+.joplin-notebooks.collapsed { max-height: none; }
+.joplin-notebooks-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 10px 12px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--color-text-maxcontrast);
+    text-align: left;
+        transition: all 0.2s cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+    .joplin-notebooks-header:hover {
+        background: var(--color-background-hover);
+        color: var(--color-main-text);
+    }
+.joplin-notebooks-twisty {
+    display: inline-block;
+    width: 12px;
+    text-align: center;
+    font-size: 10px;
+    color: var(--color-text-maxcontrast);
+}
+.joplin-notebooks-label { flex: 0 0 auto; }
+.joplin-notebooks-count {
+    display: inline-block;
+    margin-left: 4px;
+    padding: 1px 7px;
+    border-radius: 999px;
+    background: var(--color-background-dark, #eef0f3);
+    color: var(--color-text-maxcontrast);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.4px;
+}
+.joplin-icon-btn {
+    margin-left: auto;
+    padding: 3px 10px;
+    border: 1px solid var(--color-border);
+    background: var(--color-main-background);
+    color: var(--color-text-maxcontrast);
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    cursor: pointer;
+    border-radius: 4px;
+    line-height: 1;
+        transition: all 0.2s cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+    .joplin-icon-btn:hover, .joplin-icon-btn:focus {
+    background: var(--color-background-hover);
+    color: var(--color-main-text);
+        transform: translateY(-2px);
+        box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }
+    .joplin-icon-btn:active {
+        transform: translateY(0);
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+.joplin-notebooks-body {
+    overflow-y: auto;
+    padding: 2px 8px 8px;
+}
+.joplin-notebooks.collapsed .joplin-notebooks-body { display: none; }
+
 .joplin-tree ul { list-style: none; padding: 0; margin: 0; }
 .joplin-tree li { padding: 0; }
 .joplin-tree-item {
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 7px 10px;
+    padding: 6px 10px;
     cursor: pointer;
-    border-radius: var(--border-radius, 6px);
+    border-radius: 6px;
     user-select: none;
-    font-size: 14px;
+    font-size: 13px;
+    color: var(--color-main-text);
+        transition: all 0.15s cubic-bezier(0.2, 0.8, 0.3, 1);
 }
-.joplin-tree-item:hover { background: var(--color-background-hover); }
+    .joplin-tree-item:hover {
+        background: var(--color-background-hover);
+        padding-left: 12px;
+    }
 .joplin-tree-item.active {
-    background: var(--color-primary-element-light, var(--color-background-darker, #e0e0e0));
+    background: var(--color-primary-element-light, #e7eefc);
     color: var(--color-primary-element, var(--color-main-text));
     font-weight: 600;
 }
@@ -80,7 +230,7 @@
     width: 12px;
     text-align: center;
     color: var(--color-text-maxcontrast);
-    font-size: 11px;
+    font-size: 10px;
 }
 .joplin-tree-item .label {
     flex: 1 1 auto;
@@ -90,264 +240,286 @@
 }
 .joplin-tree ul ul { padding-left: 14px; }
 
-/* ---------- Search bar (top of list pane) ---------- */
-.joplin-search {
-    padding: 10px 12px 8px;
-    border-bottom: 1px solid var(--color-border);
-    position: sticky;
-    top: 0;
-    background: var(--color-main-background);
-    z-index: 2;
-}
-.joplin-search input {
-    width: 100%;
-    padding: 7px 12px;
-    box-sizing: border-box;
-    border-radius: var(--border-radius-large, 8px);
-    border: 1px solid var(--color-border);
-    background: var(--color-background-dark, #f5f5f5);
-    font-size: 13px;
-}
-.joplin-search input:focus {
-    outline: none;
-    border-color: var(--color-primary-element);
-    background: var(--color-main-background);
-}
-
-/* ---------- Toolbar above notes list ---------- */
-.joplin-toolbar {
-    padding: 10px 12px;
-    border-bottom: 1px solid var(--color-border);
-    display: flex;
-    gap: 8px;
-    align-items: center;
-    font-size: 12px;
-    color: var(--color-text-maxcontrast);
-    background: var(--color-main-background);
-}
-.joplin-toolbar button {
-    padding: 5px 10px;
-    font-size: 12px;
-    border-radius: var(--border-radius, 6px);
-    border: 1px solid var(--color-border);
-    background: var(--color-main-background);
-    color: var(--color-main-text);
-    cursor: pointer;
-    transition: background 0.15s;
-}
-.joplin-toolbar button:hover { background: var(--color-background-hover); }
-.joplin-toolbar button.primary {
-    background: var(--color-primary-element);
-    color: var(--color-primary-element-text);
-    border-color: var(--color-primary-element);
-    font-weight: 600;
-}
-.joplin-toolbar button.primary:hover { opacity: 0.9; }
-.joplin-toolbar .joplin-counts {
-    margin-left: auto;
+/* ---------- Notes list ---------- */
+.joplin-list-header {
+    padding: 10px 14px 6px;
     font-size: 11px;
-    white-space: nowrap;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--color-text-maxcontrast);
+    background: var(--color-background-dark, #f7f8fa);
 }
-
-/* ---------- Notes list (middle pane) ---------- */
 .joplin-list {
     list-style: none;
     margin: 0;
     padding: 0;
     overflow-y: auto;
     flex: 1 1 auto;
+    background: var(--color-background-dark, #f7f8fa);
 }
 .joplin-list li {
-    padding: 12px 14px;
+    position: relative;
+    padding: 12px 14px 12px 18px;
     border-bottom: 1px solid var(--color-border);
     cursor: pointer;
-    transition: background 0.12s;
-    border-left: 3px solid transparent;
+        transition: all 0.15s cubic-bezier(0.2, 0.8, 0.3, 1);
 }
-.joplin-list li:hover { background: var(--color-background-hover); }
-.joplin-list li.active {
-    background: var(--color-primary-element-light, var(--color-background-dark, #f0f0f0));
-    border-left-color: var(--color-primary-element);
+.joplin-list li::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+    background: transparent;
+        transition: all 0.15s cubic-bezier(0.2, 0.8, 0.3, 1);
 }
+    .joplin-list li:hover {
+        background: var(--color-background-hover);
+        padding-left: 16px;
+        transform: translateX(2px);
+    }
+.joplin-list li.active { background: var(--color-primary-element-light, #e7eefc); }
+.joplin-list li.active::before { background: var(--color-primary-element); }
+.joplin-list li.active .title { color: var(--color-primary-element); }
+
 .joplin-list .title {
     font-weight: 600;
     font-size: 14px;
+    color: var(--color-main-text);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    margin-bottom: 3px;
-}
-.joplin-list .meta {
-    font-size: 11px;
-    color: var(--color-text-maxcontrast);
+    margin-bottom: 4px;
 }
 .joplin-list .excerpt {
-    font-size: 12px;
-    color: var(--color-text-lighter, var(--color-text-maxcontrast));
-    margin-top: 4px;
+    font-size: 12.5px;
+    color: var(--color-text-maxcontrast);
     overflow: hidden;
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
-    line-height: 1.35;
+    line-height: 1.4;
+    margin-bottom: 4px;
 }
-.joplin-list .joplin-empty-list {
-    padding: 36px 16px;
-    text-align: center;
+.joplin-list .meta {
+    font-size: 11px;
     color: var(--color-text-maxcontrast);
-    font-size: 13px;
+    opacity: 0.85;
 }
 
-/* ---------- Viewer (right pane, read mode) ---------- */
+/* Empty state inside the list */
+.joplin-empty-list {
+    padding: 36px 18px;
+    text-align: center;
+    color: var(--color-text-maxcontrast);
+    border-bottom: none !important;
+    cursor: default !important;
+    background: transparent !important;
+}
+.joplin-empty-list:hover { background: transparent !important; }
+.joplin-empty-list::before { display: none !important; }
+.joplin-empty-list-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--color-main-text);
+    margin-bottom: 4px;
+}
+.joplin-empty-list-msg { font-size: 12.5px; margin-bottom: 14px; }
+.joplin-empty-list-cta {
+    padding: 7px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    border-radius: 999px;
+    border: none;
+    background: var(--color-primary-element);
+    color: var(--color-primary-element-text);
+    cursor: pointer;
+        transition: all 0.2s cubic-bezier(0.2, 0.8, 0.3, 1);
+        box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+}
+    .joplin-empty-list-cta:hover {
+        filter: brightness(1.08);
+        transform: scale(1.04);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    .joplin-empty-list-cta:active {
+        transform: scale(0.98);
+        box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+    }
+
+/* ---------- Mobile menu button (shown inside viewer on small screens) ---------- */
+.joplin-menu-btn {
+    display: none;
+    align-self: flex-start;
+    margin-bottom: 12px;
+    padding: 6px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    border-radius: 6px;
+    border: 1px solid var(--color-border);
+    background: var(--color-main-background);
+    color: var(--color-main-text);
+    cursor: pointer;
+        transition: all 0.2s cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+    .joplin-menu-btn:hover {
+        background: var(--color-background-hover);
+        transform: translateY(-2px);
+        box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }
+    .joplin-menu-btn:active {
+        transform: translateY(0);
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    }
+
+/* ---------- Viewer ---------- */
 .joplin-viewer-header {
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
     gap: 16px;
-    margin-bottom: 4px;
+    margin-bottom: 6px;
 }
 .joplin-viewer-title {
     font-size: 28px;
     font-weight: 700;
-    line-height: 1.2;
+    line-height: 1.25;
+    letter-spacing: -0.01em;
     margin: 0;
     color: var(--color-main-text);
     flex: 1 1 auto;
     word-break: break-word;
 }
-.joplin-edit-btn {
-    flex: 0 0 auto;
-    padding: 6px 16px;
-    font-size: 13px;
-    font-weight: 500;
-    border-radius: var(--border-radius, 6px);
-    border: 1px solid var(--color-border);
-    background: var(--color-main-background);
-    color: var(--color-main-text);
-    cursor: pointer;
-    transition: background 0.15s;
-}
-.joplin-edit-btn:hover { background: var(--color-background-hover); }
-
 .joplin-viewer-actions {
     flex: 0 0 auto;
     display: flex;
     gap: 8px;
     align-items: center;
 }
+.joplin-edit-btn,
 .joplin-delete-btn {
     flex: 0 0 auto;
-    padding: 6px 16px;
+    padding: 7px 14px;
     font-size: 13px;
-    font-weight: 500;
-    border-radius: var(--border-radius, 6px);
+    font-weight: 600;
+    border-radius: 6px;
     border: 1px solid var(--color-border);
     background: var(--color-main-background);
-    color: var(--color-error, #c1392b);
+    /* !important guards against Nextcloud's global button styles bleeding in
+       and forcing the label to white on a pale background (unreadable). */
+    color: var(--color-main-text) !important;
     cursor: pointer;
-    transition: background 0.15s, color 0.15s;
+    transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease,
+                transform 0.18s ease, box-shadow 0.18s ease;
 }
-.joplin-delete-btn:hover {
-    background: var(--color-error, #c1392b);
-    color: #fff;
-    border-color: var(--color-error, #c1392b);
+.joplin-edit-btn:hover,
+.joplin-edit-btn:focus-visible {
+    background: var(--color-background-hover);
+    color: var(--color-main-text) !important;
+    border-color: var(--color-primary-element, #0082c9);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.10);
+}
+.joplin-edit-btn:active {
+    transform: translateY(0);
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.08);
 }
 
-.joplin-toast {
-    position: fixed;
-    bottom: 24px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: var(--color-main-text);
-    color: var(--color-main-background);
-    padding: 10px 18px;
-    border-radius: var(--border-radius-large, 10px);
-    font-size: 13px;
-    box-shadow: 0 4px 14px rgba(0,0,0,0.18);
-    z-index: 10000;
-    opacity: 0.95;
+/* Delete button — idle: dark red text on white. Hover: solid red + white text. */
+.joplin-delete-btn {
+    color: #b3261e !important;            /* WCAG-AA against #fff */
+    border-color: rgba(179, 38, 30, 0.35);
+}
+.joplin-delete-btn:hover,
+.joplin-delete-btn:focus-visible {
+    background: #b3261e;
+    color: #ffffff !important;
+    border-color: #8c1d18;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(179, 38, 30, 0.35);
+}
+.joplin-delete-btn:active {
+    background: #8c1d18;
+    color: #ffffff !important;
+    transform: translateY(0);
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.18);
 }
 
 .joplin-viewer-meta {
     color: var(--color-text-maxcontrast);
-    font-size: 12px;
+    font-size: 12.5px;
     margin-bottom: 24px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--color-border);
 }
 .joplin-viewer-body {
-    line-height: 1.65;
+    line-height: 1.7;
     max-width: 820px;
-    font-size: 15px;
+    font-size: 15.5px;
+    color: var(--color-main-text);
 }
 .joplin-viewer-body h1,
 .joplin-viewer-body h2,
 .joplin-viewer-body h3,
-.joplin-viewer-body h4 { margin-top: 1.4em; margin-bottom: 0.5em; line-height: 1.25; }
+.joplin-viewer-body h4 {
+    margin-top: 1.5em; margin-bottom: 0.5em;
+    line-height: 1.3; letter-spacing: -0.01em;
+}
 .joplin-viewer-body h1 { font-size: 1.8em; }
 .joplin-viewer-body h2 { font-size: 1.45em; }
 .joplin-viewer-body h3 { font-size: 1.2em; }
-.joplin-viewer-body p { margin: 0.6em 0; }
+.joplin-viewer-body p  { margin: 0.7em 0; }
 .joplin-viewer-body ul,
-.joplin-viewer-body ol { padding-left: 1.4em; }
-.joplin-viewer-body li { margin: 0.2em 0; }
+.joplin-viewer-body ol { padding-left: 1.5em; }
+.joplin-viewer-body li { margin: 0.25em 0; }
 .joplin-viewer-body pre {
-    background: var(--color-background-dark, #f4f4f4);
-    padding: 12px 14px;
-    border-radius: var(--border-radius, 6px);
-    overflow-x: auto;
-    font-size: 13px;
+    background: var(--color-background-dark, #f4f5f7);
+    padding: 12px 14px; border-radius: 8px;
+    overflow-x: auto; font-size: 13px;
+    border: 1px solid var(--color-border);
 }
 .joplin-viewer-body code {
-    background: var(--color-background-dark, #f4f4f4);
-    padding: 2px 5px;
-    border-radius: 3px;
+    background: var(--color-background-dark, #f4f5f7);
+    padding: 2px 6px; border-radius: 4px;
     font-family: var(--font-face-monospace, ui-monospace, SFMono-Regular, Menlo, monospace);
     font-size: 0.9em;
 }
 .joplin-viewer-body pre code {
-    background: transparent;
-    padding: 0;
-    font-size: 13px;
+    background: transparent; padding: 0; font-size: 13px; border: none;
 }
 .joplin-viewer-body blockquote {
     border-left: 3px solid var(--color-primary-element-light, var(--color-border));
-    margin: 0.8em 0;
-    padding: 0.4em 0 0.4em 14px;
+    margin: 1em 0;
+    padding: 0.4em 0 0.4em 16px;
     color: var(--color-text-maxcontrast);
+    background: var(--color-background-dark, #f7f8fa);
+    border-radius: 0 6px 6px 0;
 }
 .joplin-viewer-body table { border-collapse: collapse; margin: 1em 0; }
 .joplin-viewer-body th,
-.joplin-viewer-body td {
-    border: 1px solid var(--color-border);
-    padding: 6px 10px;
-}
+.joplin-viewer-body td { border: 1px solid var(--color-border); padding: 6px 10px; }
 .joplin-viewer-body th { background: var(--color-background-dark); font-weight: 600; }
-.joplin-viewer-body img { max-width: 100%; border-radius: var(--border-radius, 6px); }
+.joplin-viewer-body img { max-width: 100%; border-radius: 6px; }
 .joplin-viewer-body a { color: var(--color-primary-element); text-decoration: none; }
 .joplin-viewer-body a:hover { text-decoration: underline; }
 .joplin-viewer-body hr { border: none; border-top: 1px solid var(--color-border); margin: 2em 0; }
 
-/* ---------- Editor (right pane, edit mode) ---------- */
+/* ---------- Editor ---------- */
 .joplin-editor-header {
-    display: flex;
-    align-items: center;
+    display: flex; align-items: center;
     justify-content: space-between;
-    gap: 12px;
-    margin-bottom: 12px;
+    gap: 12px; margin-bottom: 12px;
 }
 .joplin-editor-mode {
     color: var(--color-text-maxcontrast);
-    font-size: 13px;
-    font-weight: 500;
+    font-size: 13px; font-weight: 500;
 }
-.joplin-editor-mode strong {
-    color: var(--color-primary-element);
-}
+.joplin-editor-mode strong { color: var(--color-primary-element); }
 .joplin-editor-actions { display: flex; gap: 8px; }
 .joplin-editor-actions button {
-    padding: 6px 16px;
-    font-size: 13px;
-    font-weight: 500;
-    border-radius: var(--border-radius, 6px);
+    padding: 7px 16px;
+    font-size: 13px; font-weight: 600;
+    border-radius: 6px;
     border: 1px solid var(--color-border);
     background: var(--color-main-background);
     color: var(--color-main-text);
@@ -360,78 +532,16 @@
     color: var(--color-primary-element-text);
     border-color: var(--color-primary-element);
 }
-.joplin-editor-actions button.primary:hover { opacity: 0.9; }
+.joplin-editor-actions button.primary:hover { filter: brightness(1.05); }
 
 .joplin-editor-hint {
     font-size: 12px;
     color: var(--color-text-maxcontrast);
-    margin-bottom: 8px;
-    padding: 6px 10px;
-    background: var(--color-background-dark, #f5f5f5);
-    border-radius: var(--border-radius, 6px);
+    margin-bottom: 10px;
+    padding: 7px 12px;
+    background: var(--color-background-dark, #f5f6f8);
+    border-radius: 6px;
     border-left: 3px solid var(--color-primary-element-light, var(--color-primary-element));
-}
-
-/* ---------- Markdown formatting toolbar ---------- */
-.joplin-md-toolbar {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 2px;
-    align-items: center;
-    padding: 6px 8px;
-    margin-bottom: 6px;
-    background: var(--color-background-dark, #f5f5f5);
-    border: 1px solid var(--color-border);
-    border-radius: var(--border-radius, 6px);
-    position: sticky;
-    top: 0;
-    z-index: 5;
-}
-.joplin-md-btn {
-    min-width: 28px;
-    height: 28px;
-    padding: 0 8px;
-    font-size: 13px;
-    line-height: 1;
-    border: 1px solid transparent;
-    background: transparent;
-    color: var(--color-main-text);
-    border-radius: var(--border-radius, 4px);
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-}
-.joplin-md-btn:hover {
-    background: var(--color-background-hover);
-    border-color: var(--color-border);
-}
-.joplin-md-btn.joplin-md-bold   { font-weight: 700; }
-.joplin-md-btn.joplin-md-italic { font-style: italic; }
-.joplin-md-btn.joplin-md-strike { text-decoration: line-through; }
-.joplin-md-btn.joplin-md-h      { font-weight: 700; }
-.joplin-md-btn.joplin-md-preview {
-    background: var(--color-primary-element-light, var(--color-background-dark));
-    color: var(--color-primary-element);
-    font-weight: 600;
-}
-.joplin-md-sep {
-    display: inline-block;
-    width: 1px;
-    height: 18px;
-    background: var(--color-border);
-    margin: 0 4px;
-}
-.joplin-md-spacer { flex: 1 1 auto; }
-
-.joplin-editor-preview {
-    flex: 1 1 auto;
-    min-height: 60vh;
-    padding: 14px 16px;
-    border: 1px solid var(--color-border);
-    border-radius: var(--border-radius, 6px);
-    background: var(--color-main-background);
-    overflow-y: auto;
 }
 
 .joplin-editor-body {
@@ -439,16 +549,15 @@
     box-sizing: border-box;
     flex: 1 1 auto;
     min-height: 60vh;
-    padding: 14px 16px;
+    padding: 16px 18px;
     font-family: var(--font-face-monospace, ui-monospace, SFMono-Regular, Menlo, monospace);
-    font-size: 14px;
-    line-height: 1.6;
+    font-size: 14px; line-height: 1.6;
     border: 1px solid var(--color-border);
-    border-radius: var(--border-radius, 6px);
+    border-radius: 8px;
     background: var(--color-main-background);
     color: var(--color-main-text);
-    resize: none;
-    outline: none;
+    resize: none; outline: none;
+    transition: border-color 0.15s;
 }
 .joplin-editor-body:focus { border-color: var(--color-primary-element); }
 
@@ -458,53 +567,42 @@
     color: var(--color-text-maxcontrast);
     min-height: 18px;
 }
-.joplin-editor-status.error { color: var(--color-error); font-weight: 500; }
-.joplin-editor-status.success { color: var(--color-success, #2eb045); }
+.joplin-editor-status.error   { color: var(--color-error); font-weight: 500; }
+.joplin-editor-status.success { color: var(--color-success, #2eb045); font-weight: 500; }
 
-/* ---------- Empty / loading states ---------- */
+/* ---------- Empty / loading ---------- */
 .joplin-empty {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
     flex: 1 1 auto;
     color: var(--color-text-maxcontrast);
     padding: 48px 24px;
     text-align: center;
 }
-.joplin-empty-icon {
-    font-size: 56px;
-    line-height: 1;
-    margin-bottom: 16px;
-    opacity: 0.3;
-}
 .joplin-empty-title {
-    font-size: 18px;
-    font-weight: 600;
-    margin-bottom: 6px;
+    font-size: 20px; font-weight: 700;
+    margin-bottom: 8px;
     color: var(--color-main-text);
+    letter-spacing: -0.01em;
 }
 .joplin-empty-subtitle {
-    font-size: 13px;
-    margin-bottom: 20px;
-    max-width: 380px;
+    font-size: 13.5px; line-height: 1.5;
+    margin-bottom: 22px; max-width: 420px;
 }
 .joplin-empty .joplin-empty-cta {
-    padding: 8px 18px;
-    font-size: 14px;
-    font-weight: 500;
-    border-radius: var(--border-radius, 6px);
-    border: none;
+    padding: 9px 20px;
+    font-size: 14px; font-weight: 600;
+    border-radius: 999px; border: none;
     background: var(--color-primary-element);
     color: var(--color-primary-element-text);
     cursor: pointer;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+    transition: filter 0.15s;
 }
-.joplin-empty .joplin-empty-cta:hover { opacity: 0.9; }
+.joplin-empty .joplin-empty-cta:hover { filter: brightness(1.05); }
 
 .joplin-loading {
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    display: flex; align-items: center; justify-content: center;
     flex: 1 1 auto;
     padding: 48px;
     color: var(--color-text-maxcontrast);
@@ -513,8 +611,7 @@
 .joplin-loading::before {
     content: "";
     display: inline-block;
-    width: 18px;
-    height: 18px;
+    width: 18px; height: 18px;
     margin-right: 10px;
     border: 2px solid var(--color-border);
     border-top-color: var(--color-primary-element);
@@ -523,26 +620,312 @@
 }
 @keyframes joplin-spin { to { transform: rotate(360deg); } }
 
-.joplin-error {
-    padding: 12px 16px;
-    border: 1px solid var(--color-error);
-    background: var(--color-error-hover, #fdecea);
-    color: var(--color-error);
-    border-radius: var(--border-radius, 6px);
-    margin: 12px;
-    font-size: 13px;
+/* ---------- Global loading overlay (centered card) ---------- */
+.joplin-overlay {
+    display: none;
+    position: absolute;
+    inset: 0;
+    align-items: center;
+    justify-content: center;
+    background: rgba(20, 24, 32, 0.18);
+    z-index: 100;
+    pointer-events: none;
+}
+.joplin-overlay.visible {
+    display: flex;
+    pointer-events: auto;
+}
+.joplin-overlay-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 22px;
+    background: var(--color-main-background);
+    border-radius: 12px;
+    box-shadow: 0 8px 28px rgba(0,0,0,0.18);
+}
+.joplin-overlay-spinner {
+    width: 22px; height: 22px;
+    border: 3px solid var(--color-border);
+    border-top-color: var(--color-primary-element);
+    border-radius: 50%;
+    animation: joplin-spin 0.8s linear infinite;
+    flex: 0 0 auto;
+}
+.joplin-overlay-text {
+    font-size: 13px; font-weight: 600;
+    color: var(--color-main-text);
+    white-space: nowrap;
+}
+
+/* ---------- Toasts ---------- */
+.joplin-toast {
+    position: fixed;
+    bottom: 24px; left: 50%;
+    transform: translateX(-50%) translateY(8px);
+    display: inline-flex; align-items: center; gap: 10px;
+    background: #2c3e50;
+    color: #fff;
+    padding: 10px 18px;
+    border-radius: 999px;
+    font-size: 13px; font-weight: 500;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.2);
+    z-index: 10000;
+    opacity: 0;
+    transition: opacity 0.18s, transform 0.18s;
+    max-width: 90vw;
+}
+.joplin-toast.visible { opacity: 0.97; transform: translateX(-50%) translateY(0); }
+.joplin-toast-icon {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.18);
+    font-size: 12px; font-weight: 700;
+    flex: 0 0 auto;
+}
+.joplin-toast-success { background: #2eb045; }
+.joplin-toast-error   { background: #c1392b; }
+.joplin-toast-info    { background: #2c3e50; }
+
+/* ---------- Confirmation modal ---------- */
+.joplin-modal-backdrop {
+    position: fixed; inset: 0;
+    background: rgba(20, 24, 32, 0.45);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 11000;
+    padding: 16px;
+    animation: joplin-fade-in 0.12s ease-out;
+}
+@keyframes joplin-fade-in { from { opacity: 0; } to { opacity: 1; } }
+.joplin-modal {
+    background: var(--color-main-background);
+    color: var(--color-main-text);
+    width: 100%; max-width: 440px;
+    border-radius: 12px;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.25);
+    overflow: hidden;
+    animation: joplin-modal-in 0.16s ease-out;
+}
+@keyframes joplin-modal-in {
+    from { transform: translateY(8px) scale(0.98); opacity: 0; }
+    to   { transform: translateY(0) scale(1);     opacity: 1; }
+}
+.joplin-modal-header { padding: 18px 22px 4px; }
+.joplin-modal-title {
+    margin: 0; font-size: 17px; font-weight: 700;
+    letter-spacing: -0.01em;
+}
+.joplin-modal-body {
+    padding: 8px 22px 18px;
+    font-size: 14px; line-height: 1.5;
+    color: var(--color-text-maxcontrast);
+}
+.joplin-modal-actions {
+    display: flex; justify-content: flex-end; gap: 8px;
+    padding: 12px 18px 18px;
+    border-top: 1px solid var(--color-border);
+    background: var(--color-background-dark, #f7f8fa);
+}
+.joplin-modal-btn {
+    padding: 8px 18px;
+    font-size: 13px; font-weight: 600;
+    border-radius: 6px;
+    border: 1px solid var(--color-border);
+    background: var(--color-main-background);
+    color: var(--color-main-text) !important;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, border-color 0.15s, filter 0.15s;
+}
+.joplin-modal-btn:hover,
+.joplin-modal-btn:focus-visible {
+    background: var(--color-background-hover);
+    color: var(--color-main-text) !important;
+    border-color: var(--color-primary-element, #0082c9);
+}
+.joplin-modal-btn.primary {
+    background: var(--color-primary-element, #0082c9);
+    color: var(--color-primary-element-text, #ffffff) !important;
+    border-color: var(--color-primary-element, #0082c9);
+}
+.joplin-modal-btn.primary:hover,
+.joplin-modal-btn.primary:focus-visible {
+    background: var(--color-primary-element-hover, #006aa3);
+    color: var(--color-primary-element-text, #ffffff) !important;
+    border-color: var(--color-primary-element-hover, #006aa3);
+    filter: none;
+}
+.joplin-modal-btn.danger {
+    background: #b3261e;
+    color: #ffffff !important;
+    border-color: #8c1d18;
+}
+.joplin-modal-btn.danger:hover,
+.joplin-modal-btn.danger:focus-visible {
+    background: #8c1d18;
+    color: #ffffff !important;
+    border-color: #6b160f;
+}
+.joplin-modal-btn.danger:active {
+    background: #6b160f;
+    color: #ffffff !important;
+}
+
+/* Modal text input (used by showPrompt for create / rename notebook). */
+.joplin-modal-input {
+    width: 100%;
+    box-sizing: border-box;
+    margin-top: 10px;
+    padding: 8px 12px;
+    font-size: 14px;
+    border-radius: 8px;
+    border: 1px solid var(--color-border);
+    background: var(--color-main-background);
+    color: var(--color-main-text);
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+.joplin-modal-input:focus {
+    outline: none;
+    border-color: var(--color-primary-element);
+    box-shadow: 0 0 0 3px var(--color-primary-element-light, rgba(0, 130, 201, 0.15));
+}
+.joplin-modal-message {
+    margin: 0 0 4px;
+    color: var(--color-main-text);
+    font-size: 13.5px;
+    line-height: 1.5;
+}
+
+/* ---------- Sync status pill (sidebar header) ---------- */
+.joplin-sync-pill {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 2px 9px;
+    border-radius: 999px;
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+    line-height: 1.4;
+    vertical-align: middle;
+    transition: opacity 0.15s;
+}
+.joplin-sync-pill.syncing {
+    background: rgba(0, 0, 0, 0.06);
+    color: var(--color-text-maxcontrast);
+}
+.joplin-sync-pill.syncing::before {
+    content: "";
+    display: inline-block;
+    width: 8px; height: 8px;
+    margin-right: 5px;
+    border-radius: 50%;
+    border: 2px solid currentColor;
+    border-top-color: transparent;
+    vertical-align: -1px;
+    animation: joplin-spin 0.8s linear infinite;
+}
+.joplin-sync-pill.ok {
+    background: rgba(46, 160, 67, 0.15);
+    color: #1a7f37;
+}
+.joplin-sync-pill.error {
+    background: rgba(193, 57, 43, 0.15);
+    color: #b42318;
+}
+@keyframes joplin-spin {
+    to { transform: rotate(360deg); }
+}
+
+/* ---------- Inline action buttons inside notebook tree items ---------- */
+.joplin-tree-item { position: relative; }
+.joplin-tree-actions {
+    margin-left: auto;
+    display: inline-flex;
+    gap: 4px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s;
+}
+.joplin-tree-item:hover .joplin-tree-actions,
+.joplin-tree-item:focus-within .joplin-tree-actions,
+.joplin-tree-item.active .joplin-tree-actions {
+    opacity: 1;
+    pointer-events: auto;
+}
+.joplin-tree-action {
+    padding: 2px 8px;
+    font-size: 10.5px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    line-height: 1.4;
+    border-radius: 4px;
+    border: 1px solid var(--color-border);
+    background: var(--color-main-background);
+    /* !important: Nextcloud's global button rules sometimes set color: white
+       on hover, which would make the label disappear over the pale pink
+       danger background. Lock our colors in. */
+    color: var(--color-main-text) !important;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.joplin-tree-action:hover,
+.joplin-tree-action:focus-visible {
+    background: var(--color-background-hover);
+    color: var(--color-main-text) !important;
+    border-color: var(--color-primary-element, #0082c9);
+}
+
+/* Danger variant (Delete). Idle: dark red text on white. Hover: solid red + white. */
+.joplin-tree-action.danger {
+    color: #b3261e !important;
+    border-color: rgba(179, 38, 30, 0.35);
+}
+.joplin-tree-action.danger:hover,
+.joplin-tree-action.danger:focus-visible {
+    background: #b3261e;
+    color: #ffffff !important;
+    border-color: #8c1d18;
+}
+.joplin-tree-action.danger:active {
+    background: #8c1d18;
+    color: #ffffff !important;
+}
+
+/* ---------- Sidebar slide-in backdrop (mobile) ---------- */
+.joplin-backdrop {
+    display: none;
+    position: absolute; inset: 0;
+    background: rgba(0,0,0,0.4);
+    z-index: 4;
 }
 
 /* ---------- Responsive ---------- */
 @media (max-width: 1100px) {
-    .joplin-pane-tree { flex-basis: 200px; min-width: 180px; }
-    .joplin-pane-list { flex-basis: 300px; min-width: 240px; }
-    .joplin-pane-viewer { padding: 20px 24px; }
-}
-@media (max-width: 768px) {
-    .joplin-pane-tree { display: none; }
-    .joplin-pane-list { flex-basis: 280px; }
-    .joplin-pane-viewer { padding: 16px; }
-    .joplin-viewer-title { font-size: 22px; }
+    .joplin-pane-list   { flex-basis: 300px; width: 300px; min-width: 260px; }
+    .joplin-pane-viewer { padding: 24px 28px; }
 }
 
+@media (max-width: 768px) {
+    .joplin-pane-list {
+        position: absolute;
+        top: 0; bottom: 0; left: 0;
+        width: 86%;
+        max-width: 340px;
+        z-index: 5;
+        transform: translateX(-100%);
+        transition: transform 0.22s ease;
+        box-shadow: 2px 0 12px rgba(0,0,0,0.12);
+    }
+    #joplin-app.joplin-sidebar-open .joplin-pane-list { transform: translateX(0); }
+    #joplin-app.joplin-sidebar-open .joplin-backdrop  { display: block; }
+    .joplin-pane-viewer {
+        flex: 1 1 auto;
+        padding: 16px 18px 24px;
+    }
+    .joplin-menu-btn { display: inline-flex; }
+    .joplin-viewer-title  { font-size: 22px; }
+    .joplin-viewer-header { flex-wrap: wrap; }
+    .joplin-viewer-actions { width: 100%; justify-content: flex-end; }
+}

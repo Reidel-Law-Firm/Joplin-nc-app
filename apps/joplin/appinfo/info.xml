@@ -21,7 +21,7 @@ Features:
 
 This app is independent of the "Joplin File Titles" app; both can be enabled together.
     ]]></description>
-    <version>1.3.4</version>
+    <version>1.5.1</version>
     <licence>agpl</licence>
     <author>Schuyler 'Rocky' Reidel</author>
     <namespace>Joplin</namespace>

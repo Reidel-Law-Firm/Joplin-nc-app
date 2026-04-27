@@ -236,8 +236,154 @@ class ApiController extends Controller {
         ]));
     }
 
+    // ==================================================================
+    //  Notebook (folder) endpoints
+    // ==================================================================
+
     /**
-     * Search by title and indexed body snippet; for confirmed title hits
+     * Create a notebook (Joplin "folder", type_: 2).
+     *
+     * Body parameters:
+     *   - title      (string, required)
+     *   - parent_id  (string, optional 32-hex parent notebook id)
+     *
+     * @NoAdminRequired
+     */
+    public function createFolder(string $title = '', string $parent_id = ''): JSONResponse {
+        if ($this->userId === null) {
+            return new JSONResponse(['error' => 'not_authenticated'], Http::STATUS_UNAUTHORIZED);
+        }
+        $title = trim($title);
+        if ($title === '') {
+            return new JSONResponse(
+                ['error' => 'invalid_title', 'message' => 'Notebook title is required'],
+                Http::STATUS_BAD_REQUEST
+            );
+        }
+        $parent = $parent_id !== '' ? strtolower($parent_id) : null;
+
+        try {
+            $res = $this->writer->createFolder($this->userId, $parent, $title);
+        } catch (\Throwable $e) {
+            $this->logger->warning('Joplin: createFolder failed', [
+                'user' => $this->userId, 'exception' => $e,
+            ]);
+            return new JSONResponse(
+                ['error' => 'create_failed', 'message' => $e->getMessage()],
+                Http::STATUS_BAD_REQUEST
+            );
+        }
+
+        return $this->fresh(new JSONResponse([
+            'ok'        => true,
+            'id'        => $res['id'],
+            'parent_id' => $parent,
+            'title'     => $title,
+        ], Http::STATUS_CREATED));
+    }
+
+    /**
+     * Rename a notebook (only the title is changed; parent_id and other
+     * metadata are preserved).
+     *
+     * @NoAdminRequired
+     */
+    public function renameFolder(string $id, string $title = ''): JSONResponse {
+        if ($this->userId === null) {
+            return new JSONResponse(['error' => 'not_authenticated'], Http::STATUS_UNAUTHORIZED);
+        }
+        if (!preg_match('/^[0-9a-f]{32}$/i', $id)) {
+            return new JSONResponse(['error' => 'invalid_id'], Http::STATUS_BAD_REQUEST);
+        }
+        $title = trim($title);
+        if ($title === '') {
+            return new JSONResponse(
+                ['error' => 'invalid_title', 'message' => 'Notebook title is required'],
+                Http::STATUS_BAD_REQUEST
+            );
+        }
+
+        try {
+            $res = $this->writer->renameFolder($this->userId, strtolower($id), $title);
+        } catch (\Throwable $e) {
+            $this->logger->warning('Joplin: renameFolder failed', [
+                'user' => $this->userId, 'id' => $id, 'exception' => $e,
+            ]);
+            $msg = $e->getMessage();
+            $status = str_contains($msg, 'not found')
+                ? Http::STATUS_NOT_FOUND
+                : Http::STATUS_BAD_REQUEST;
+            return new JSONResponse(
+                ['error' => 'rename_failed', 'message' => $msg],
+                $status
+            );
+        }
+
+        return $this->fresh(new JSONResponse([
+            'ok'    => true,
+            'id'    => $res['id'],
+            'title' => $title,
+        ]));
+    }
+
+    /**
+     * Delete a notebook AND every descendant (sub-notebooks + notes).
+     * Uses cascading move-to-trash so Joplin sync converges cleanly on
+     * every client.
+     *
+     * @NoAdminRequired
+     */
+    public function deleteFolder(string $id): JSONResponse {
+        if ($this->userId === null) {
+            return new JSONResponse(['error' => 'not_authenticated'], Http::STATUS_UNAUTHORIZED);
+        }
+        if (!preg_match('/^[0-9a-f]{32}$/i', $id)) {
+            return new JSONResponse(['error' => 'invalid_id'], Http::STATUS_BAD_REQUEST);
+        }
+
+        try {
+            $res = $this->writer->deleteFolder($this->userId, strtolower($id));
+        } catch (\Throwable $e) {
+            $this->logger->warning('Joplin: deleteFolder failed', [
+                'user' => $this->userId, 'id' => $id, 'exception' => $e,
+            ]);
+            $msg = $e->getMessage();
+            $status = str_contains($msg, 'not found')
+                ? Http::STATUS_NOT_FOUND
+                : Http::STATUS_BAD_REQUEST;
+            return new JSONResponse(
+                ['error' => 'delete_failed', 'message' => $msg],
+                $status
+            );
+        }
+
+        return $this->fresh(new JSONResponse([
+            'ok'              => true,
+            'id'              => $res['id'],
+            'trashed_folders' => $res['trashed_folders'],
+            'trashed_notes'   => $res['trashed_notes'],
+        ]));
+    }
+
+    /**
+     * Return descendant counts for a notebook so the client can show a
+     * meaningful "this will delete X notes / Y notebooks" warning.
+     *
+     * @NoAdminRequired
+     */
+    public function countFolderDescendants(string $id): JSONResponse {
+        if ($this->userId === null) {
+            return new JSONResponse(['error' => 'not_authenticated'], Http::STATUS_UNAUTHORIZED);
+        }
+        if (!preg_match('/^[0-9a-f]{32}$/i', $id)) {
+            return new JSONResponse(['error' => 'invalid_id'], Http::STATUS_BAD_REQUEST);
+        }
+        $counts = $this->writer->countDescendants($this->userId, strtolower($id));
+        return $this->fresh(new JSONResponse($counts));
+    }
+
+    /**
+     * Search across all of the user's notes. Matches title first; if it doesn't hit
      * we additionally scan the full body to surface a matching excerpt.
      *
      * @NoAdminRequired
