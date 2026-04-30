@@ -27,11 +27,16 @@ class PageController extends Controller {
      * @NoCSRFRequired
      */
     public function index(): TemplateResponse {
-        // Vendored libraries (marked + DOMPurify) for Markdown rendering.
-        // Loaded BEFORE joplin-main so they're available as window.marked
-        // and window.DOMPurify when the SPA boots.
+        // Vendored libraries (marked + DOMPurify) for Markdown rendering
+        // in the read-only viewer. Loaded BEFORE joplin-main so they're
+        // available as window.marked / window.DOMPurify when the SPA boots.
         Util::addScript(Application::APP_ID, 'vendor/marked.min');
         Util::addScript(Application::APP_ID, 'vendor/purify.min');
+        // Toast UI Editor — vendored WYSIWYG/Markdown rich-text editor.
+        // Markdown is the source of truth (editor.getMarkdown()), so the
+        // existing Joplin save/sync pipeline is byte-compatible.
+        Util::addScript(Application::APP_ID, 'vendor/toastui-editor-all.min');
+        Util::addStyle(Application::APP_ID, 'toastui-editor.min');
         Util::addScript(Application::APP_ID, 'joplin-main');
         Util::addStyle(Application::APP_ID, 'joplin');
 

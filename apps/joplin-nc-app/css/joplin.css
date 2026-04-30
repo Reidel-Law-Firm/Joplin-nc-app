@@ -511,8 +511,32 @@
 .joplin-viewer-body h3 { font-size: 1.2em; }
 .joplin-viewer-body p  { margin: 0.7em 0; }
 .joplin-viewer-body ul,
-.joplin-viewer-body ol { padding-left: 1.5em; }
-.joplin-viewer-body li { margin: 0.25em 0; }
+.joplin-viewer-body ol {
+    padding-left: 1.75em;
+    margin: 0.6em 0;
+}
+.joplin-viewer-body ul { list-style: disc outside !important; }
+.joplin-viewer-body ul ul { list-style: circle outside !important; }
+.joplin-viewer-body ul ul ul { list-style: square outside !important; }
+.joplin-viewer-body ol { list-style: decimal outside !important; }
+.joplin-viewer-body li { margin: 0.25em 0; display: list-item !important; }
+/* Inline emphasis — Nextcloud's global reset can flatten <em>/<strong>/<s>,
+   so re-assert them explicitly inside the viewer. */
+.joplin-viewer-body em,
+.joplin-viewer-body i { font-style: italic !important; font-weight: inherit; }
+.joplin-viewer-body strong,
+.joplin-viewer-body b { font-weight: 700 !important; font-style: inherit; }
+.joplin-viewer-body em strong,
+.joplin-viewer-body strong em { font-style: italic !important; font-weight: 700 !important; }
+.joplin-viewer-body del,
+.joplin-viewer-body s { text-decoration: line-through !important; }
+.joplin-viewer-body mark { background: #fff3a3; color: inherit; padding: 0 2px; }
+/* Task-list items (GFM checkboxes) keep no marker */
+.joplin-viewer-body li.task-list-item,
+.joplin-viewer-body li:has(> input[type="checkbox"]) {
+    list-style: none !important;
+    margin-left: -1.25em;
+}
 .joplin-viewer-body pre {
     background: var(--color-background-dark, #f4f5f7);
     padding: 12px 14px; border-radius: 8px;
@@ -545,46 +569,82 @@
 .joplin-viewer-body a:hover { text-decoration: underline; }
 .joplin-viewer-body hr { border: none; border-top: 1px solid var(--color-border); margin: 2em 0; }
 
-/* ---------- Editor ---------- */
+/* =====================================================================
+   Editor — header bar + Toast UI rich text editor
+   When edit mode is active, .joplin-pane-viewer.joplin-editing-mode drops
+   its own padding/overflow so the editor can fill the entire pane.
+   ===================================================================== */
+
+.joplin-pane-viewer.joplin-editing-mode {
+    padding: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
 .joplin-editor-header {
     display: flex; align-items: center;
     justify-content: space-between;
-    gap: 12px; margin-bottom: 12px;
+    gap: 12px;
+    padding: 14px 20px;
+    background: var(--color-main-background);
+    border-bottom: 1px solid var(--joplin-divider);
+    flex: 0 0 auto;
 }
 .joplin-editor-mode {
     color: var(--color-text-maxcontrast);
     font-size: 13px; font-weight: 500;
+    display: inline-flex; align-items: center;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
-.joplin-editor-mode strong { color: var(--color-primary-element); }
-.joplin-editor-actions { display: flex; gap: 8px; }
+.joplin-editor-mode-icon {
+    display: inline-flex;
+    align-items: center; justify-content: center;
+    width: 22px; height: 22px;
+    margin-right: 6px;
+    border-radius: 50%;
+    background: var(--color-primary-element-light, rgba(0, 130, 201, 0.15));
+    color: var(--color-primary-element);
+    font-size: 13px;
+    font-weight: 700;
+}
+.joplin-editor-mode strong {
+    color: var(--color-main-text);
+    font-weight: 600;
+    margin-left: 2px;
+}
+.joplin-editor-actions { display: flex; gap: 8px; flex: 0 0 auto; }
 .joplin-editor-actions button {
-    padding: 7px 16px;
+    padding: 7px 18px;
     font-size: 13px; font-weight: 600;
-    border-radius: 6px;
+    border-radius: 999px;
     border: 1px solid var(--color-border);
     background: var(--color-main-background);
     color: var(--color-main-text);
     cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, transform 0.1s;
 }
-.joplin-editor-actions button:hover { background: var(--color-background-hover); }
+.joplin-editor-actions button:hover {
+    background: var(--color-background-hover);
+    border-color: var(--color-primary-element);
+}
+.joplin-editor-actions button:active { transform: scale(0.97); }
 .joplin-editor-actions button[disabled] { opacity: 0.5; cursor: not-allowed; }
 .joplin-editor-actions button.primary {
     background: var(--color-primary-element);
     color: var(--color-primary-element-text);
     border-color: var(--color-primary-element);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
-.joplin-editor-actions button.primary:hover { filter: brightness(1.05); }
-
-.joplin-editor-hint {
-    font-size: 12px;
-    color: var(--color-text-maxcontrast);
-    margin-bottom: 10px;
-    padding: 7px 12px;
-    background: var(--color-background-dark, #f5f6f8);
-    border-radius: 6px;
-    border-left: 3px solid var(--color-primary-element-light, var(--color-primary-element));
+.joplin-editor-actions button.primary:hover {
+    filter: brightness(1.08);
+    border-color: var(--color-primary-element);
 }
 
+/* Plain-textarea fallback (only used when Toast UI fails to load). */
 .joplin-editor-body {
     width: 100%;
     box-sizing: border-box;
@@ -593,23 +653,298 @@
     padding: 16px 18px;
     font-family: var(--font-face-monospace, ui-monospace, SFMono-Regular, Menlo, monospace);
     font-size: 14px; line-height: 1.6;
-    border: 1px solid var(--color-border);
-    border-radius: 8px;
+    border: none;
     background: var(--color-main-background);
     color: var(--color-main-text);
     resize: none; outline: none;
-    transition: border-color 0.15s;
 }
-.joplin-editor-body:focus { border-color: var(--color-primary-element); }
 
 .joplin-editor-status {
-    margin-top: 8px;
+    padding: 6px 20px;
     font-size: 13px;
     color: var(--color-text-maxcontrast);
-    min-height: 18px;
+    min-height: 28px;
+    background: var(--color-main-background);
+    border-top: 1px solid var(--joplin-divider);
+    flex: 0 0 auto;
 }
 .joplin-editor-status.error   { color: var(--color-error); font-weight: 500; }
 .joplin-editor-status.success { color: var(--color-success, #2eb045); font-weight: 500; }
+
+/* ---------- Toast UI Editor — full-pane WYSIWYG, themed to Nextcloud.
+   Markdown stays the source of truth on disk; this is purely visual. */
+.joplin-rte-host {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--color-main-background);
+    overflow: hidden;
+}
+.joplin-rte-host .toastui-editor-defaultUI,
+.joplin-rte-host .toastui-editor-defaultUI .toastui-editor-main,
+.joplin-rte-host .toastui-editor-defaultUI .toastui-editor-md-container,
+.joplin-rte-host .toastui-editor-defaultUI .toastui-editor-ww-container,
+.joplin-rte-host .toastui-editor-defaultUI .ProseMirror,
+.joplin-rte-host .toastui-editor-defaultUI .toastui-editor-contents {
+    border: none !important;
+    box-shadow: none !important;
+    outline: none !important;
+}
+.joplin-rte-host .toastui-editor-defaultUI {
+    border-radius: 0;
+    background: var(--color-main-background);
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    height: 100%;
+    width: 100%;
+}
+
+/* Toolbar */
+.joplin-rte-host .toastui-editor-defaultUI-toolbar {
+    background: var(--color-background-dark, #f5f6f8);
+    border-bottom: 1px solid var(--joplin-divider);
+    padding: 6px 12px;
+    flex: 0 0 auto;
+}
+/* Toolbar buttons — keep Toast UI's original sprite icon visible on hover.
+   We DON'T touch background-color / filter on hover, otherwise the
+   light-grey sprite turns invisible against a light hover background. */
+.joplin-rte-host .toastui-editor-toolbar-icons {
+    border-radius: 6px;
+    border: 1px solid transparent;
+    background-color: transparent;
+    margin: 1px 2px;
+    transition: background-color 0.12s, border-color 0.12s;
+}
+.joplin-rte-host .toastui-editor-toolbar-icons:not(:disabled):hover {
+    background-color: rgba(0, 0, 0, 0.06);
+    border-color: var(--color-border, rgba(0,0,0,0.1));
+}
+.joplin-rte-host .toastui-editor-toolbar-icons.active {
+    background-color: rgba(0, 130, 201, 0.15);
+    border-color: var(--color-primary-element, #0082c9);
+}
+
+/* Tooltip text shown on hover (B → "Bold", I → "Italic", …).
+   Force readable black-on-white so it's visible regardless of theme. */
+.joplin-rte-host .toastui-editor-tooltip,
+.toastui-editor-tooltip {
+    background: #2b2b2b !important;
+    color: #ffffff !important;
+    border: none !important;
+    border-radius: 4px !important;
+    padding: 4px 8px !important;
+    font-size: 12px !important;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.18);
+}
+.joplin-rte-host .toastui-editor-tooltip .text,
+.toastui-editor-tooltip .text,
+.joplin-rte-host .toastui-editor-tooltip .arrow,
+.toastui-editor-tooltip .arrow {
+    color: #ffffff !important;
+    background: transparent !important;
+}
+.joplin-rte-host .toastui-editor-toolbar-divider {
+    background-color: var(--joplin-divider);
+    margin: 4px 6px;
+}
+.joplin-rte-host .toastui-editor-popup {
+    background: var(--color-main-background);
+    border: 1px solid var(--color-border);
+    color: var(--color-main-text);
+    border-radius: 8px;
+    box-shadow: 0 6px 24px rgba(0,0,0,0.12);
+}
+.joplin-rte-host .toastui-editor-popup-add-link label,
+.joplin-rte-host .toastui-editor-popup-add-image label {
+    color: var(--color-main-text);
+}
+.joplin-rte-host .toastui-editor-popup input[type="text"],
+.joplin-rte-host .toastui-editor-popup input[type="url"] {
+    background: var(--color-main-background);
+    color: var(--color-main-text);
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+}
+.joplin-rte-host .toastui-editor-close-button {
+    color: var(--color-main-text);
+}
+
+/* Main editing surface */
+.joplin-rte-host .toastui-editor-main {
+    background: var(--color-main-background);
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+}
+.joplin-rte-host .toastui-editor-md-container,
+.joplin-rte-host .toastui-editor-ww-container {
+    background: var(--color-main-background);
+    flex: 1 1 auto;
+    min-height: 0;
+}
+.joplin-rte-host .toastui-editor-contents,
+.joplin-rte-host .toastui-editor {
+    color: var(--color-main-text) !important;
+    font-size: 15.5px;
+    line-height: 1.7;
+    font-family: var(--font-face, system-ui, -apple-system, "Segoe UI", "Roboto",
+                 "Helvetica Neue", sans-serif);
+    padding: 24px 32px;
+    width: 100%;
+    max-width: none;
+    box-sizing: border-box;
+}
+.joplin-rte-host .toastui-editor-contents h1,
+.joplin-rte-host .toastui-editor-contents h2 {
+    border-bottom: 1px solid var(--joplin-divider);
+    padding-bottom: 0.2em;
+    color: var(--color-main-text);
+}
+.joplin-rte-host .toastui-editor-contents h1,
+.joplin-rte-host .toastui-editor-contents h2,
+.joplin-rte-host .toastui-editor-contents h3,
+.joplin-rte-host .toastui-editor-contents h4,
+.joplin-rte-host .toastui-editor-contents h5,
+.joplin-rte-host .toastui-editor-contents h6,
+.joplin-rte-host .toastui-editor-contents p,
+.joplin-rte-host .toastui-editor-contents li,
+.joplin-rte-host .toastui-editor-contents td,
+.joplin-rte-host .toastui-editor-contents th {
+    color: var(--color-main-text);
+}
+.joplin-rte-host .toastui-editor-contents code {
+    background: var(--color-background-dark, #f4f5f7);
+    color: var(--color-main-text);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: var(--font-face-monospace, ui-monospace, SFMono-Regular, Menlo, monospace);
+}
+.joplin-rte-host .toastui-editor-contents pre {
+    background: var(--color-background-dark, #f4f5f7);
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    padding: 12px 14px;
+}
+.joplin-rte-host .toastui-editor-contents pre code {
+    background: transparent;
+    padding: 0;
+}
+.joplin-rte-host .toastui-editor-contents blockquote {
+    border-left: 3px solid var(--color-primary-element-light, var(--color-border));
+    background: var(--color-background-dark, #f7f8fa);
+    color: var(--color-text-maxcontrast);
+    padding: 6px 14px;
+    border-radius: 0 6px 6px 0;
+}
+.joplin-rte-host .toastui-editor-contents a {
+    color: var(--color-primary-element);
+    text-decoration: none;
+}
+.joplin-rte-host .toastui-editor-contents a:hover { text-decoration: underline; }
+.joplin-rte-host .toastui-editor-contents table {
+    border-collapse: collapse;
+}
+.joplin-rte-host .toastui-editor-contents table td,
+.joplin-rte-host .toastui-editor-contents table th {
+    border: 1px solid var(--color-border);
+    padding: 6px 10px;
+}
+.joplin-rte-host .toastui-editor-contents table th {
+    background: var(--color-background-dark);
+}
+.joplin-rte-host .toastui-editor-contents .placeholder {
+    color: var(--color-text-maxcontrast);
+}
+
+/* Markdown mode (CodeMirror-style) — readable colors */
+.joplin-rte-host .ProseMirror,
+.joplin-rte-host .toastui-editor-md-preview,
+.joplin-rte-host .toastui-editor-md-tab-container {
+    background: var(--color-main-background);
+    color: var(--color-main-text);
+    width: 100%;
+    max-width: none;
+}
+.joplin-rte-host .toastui-editor-md-container .toastui-editor {
+    padding: 24px 32px;
+    width: 100%;
+    max-width: none;
+}
+
+/* Force full width on every wrapper Toast UI nests around the content. */
+.joplin-rte-host .toastui-editor-main-container,
+.joplin-rte-host .toastui-editor-main,
+.joplin-rte-host .toastui-editor-md-container,
+.joplin-rte-host .toastui-editor-ww-container,
+.joplin-rte-host .toastui-editor-ww-container > .toastui-editor,
+.joplin-rte-host .ProseMirror {
+    width: 100% !important;
+    max-width: none !important;
+}
+.joplin-rte-host .toastui-editor-md-tab-container .tab-item {
+    color: var(--color-text-maxcontrast);
+}
+.joplin-rte-host .toastui-editor-md-tab-container .tab-item.active {
+    color: var(--color-primary-element);
+    border-bottom-color: var(--color-primary-element);
+}
+
+/* WYSIWYG/Markdown mode-switch tabs — hidden (WYSIWYG-only UX). */
+.joplin-rte-host .toastui-editor-mode-switch,
+.joplin-rte-host .toastui-editor-md-tab-container {
+    display: none !important;
+}
+
+/* Dark-theme tweaks (Nextcloud sets data-themes / body class for dark) */
+body[data-theme-dark] .joplin-rte-host .toastui-editor-defaultUI,
+body[data-theme-dark-highcontrast] .joplin-rte-host .toastui-editor-defaultUI,
+body.theme--dark .joplin-rte-host .toastui-editor-defaultUI {
+    background: var(--color-main-background);
+}
+body[data-theme-dark] .joplin-rte-host .toastui-editor-toolbar-icons,
+body.theme--dark .joplin-rte-host .toastui-editor-toolbar-icons {
+    filter: invert(0.92) hue-rotate(180deg);
+}
+body[data-theme-dark] .joplin-rte-host .toastui-editor-toolbar-icons:not(:disabled):hover,
+body.theme--dark .joplin-rte-host .toastui-editor-toolbar-icons:not(:disabled):hover {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Tablet: shrink horizontal padding so toolbar buttons aren't clipped */
+@media (max-width: 1100px) {
+    .joplin-rte-host .toastui-editor-contents,
+    .joplin-rte-host .toastui-editor-md-container .toastui-editor {
+        padding: 18px 20px;
+    }
+    .joplin-editor-header { padding: 12px 16px; }
+}
+
+
+/* ---------- "Open in Nextcloud Text" link in the viewer header --------- */
+.joplin-text-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 12px;
+    font-size: 12.5px;
+    font-weight: 600;
+    text-decoration: none;
+    border-radius: 999px;
+    border: 1px solid var(--color-border);
+    background: var(--color-main-background);
+    color: var(--color-main-text);
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+}
+.joplin-text-btn:hover {
+    background: var(--color-background-hover);
+    border-color: var(--color-primary-element);
+    text-decoration: none;
+}
 
 /* ---------- Empty / loading ---------- */
 .joplin-empty {

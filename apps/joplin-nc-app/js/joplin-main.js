@@ -589,7 +589,7 @@
         } else {
             items.forEach(function (n) {
                 const active = state.selectedNote === n.id;
-                const title = n.title || '(untitled)';
+                const title = cleanTitle(n.title) || '(untitled)';
                 const preview = n.excerpt || firstLineOfBody(n);
                 ul.appendChild(el('li', {
                     class: active ? 'active' : '',
@@ -604,6 +604,37 @@
             });
         }
         root.appendChild(ul);
+    }
+
+    /**
+     * Strip Markdown emphasis/strikethrough/heading/code markers from a title for
+     * display only. The underlying note content is unchanged so Joplin sync still
+     * sees the original Markdown. Examples:
+     *   "***~~Hello~~***" -> "Hello"
+     *   "# My note"       -> "My note"
+     *   "**Bold**"        -> "Bold"
+     */
+    function cleanTitle(s) {
+        if (!s) return '';
+        let t = String(s).trim();
+        // Strip leading ATX heading marks (# ## ### ...)
+        t = t.replace(/^#{1,6}\s+/, '');
+        // Strip surrounding bold/italic/strike markers repeatedly
+        // Order: longest markers first (***, ___, **, __, ~~, *, _, `)
+        const markers = ['***', '___', '**', '__', '~~', '*', '_', '`'];
+        let changed = true;
+        while (changed) {
+            changed = false;
+            for (let i = 0; i < markers.length; i++) {
+                const m = markers[i];
+                if (t.length > m.length * 2 && t.startsWith(m) && t.endsWith(m)) {
+                    t = t.slice(m.length, -m.length).trim();
+                    changed = true;
+                    break;
+                }
+            }
+        }
+        return t || s;
     }
 
     /** Best-effort short preview from index data (title is excluded if it duplicates). */
@@ -658,25 +689,39 @@
             return;
         }
 
-        // Header with title + Edit / Delete buttons
+        // Header with title + Edit / Open-in-Text / Delete buttons
+        const headerActions = [
+            el('button', {
+                class: 'joplin-edit-btn joplin-icon-only',
+                title: 'Edit this note',
+                'aria-label': 'Edit this note',
+                html: ICONS.pencil,
+                onclick: function () { startEditNote(note); },
+            }),
+        ];
+        // Deep-link to Nextcloud's built-in Text app via Files (.md handler).
+        // if (note.file_id && window.OC && typeof OC.generateUrl === 'function') {
+        //     headerActions.push(el('a', {
+        //         class: 'joplin-text-btn',
+        //         href: OC.generateUrl('/f/' + encodeURIComponent(note.file_id)),
+        //         target: '_blank',
+        //         rel: 'noopener',
+        //         title: 'Open this note in the Nextcloud Text editor',
+        //         'aria-label': 'Open in Nextcloud Text',
+        //         text: 'Open in Text',
+        //     }));
+        // }
+        headerActions.push(el('button', {
+            class: 'joplin-delete-btn joplin-icon-only',
+            title: 'Move this note to the Joplin trash',
+            'aria-label': 'Delete this note',
+            html: ICONS.trash,
+            onclick: function () { confirmDeleteNote(note); },
+        }));
+
         const header = el('div', { class: 'joplin-viewer-header' }, [
-            el('h1', { class: 'joplin-viewer-title', text: note.title || '(untitled)' }),
-            el('div', { class: 'joplin-viewer-actions' }, [
-                el('button', {
-                    class: 'joplin-edit-btn joplin-icon-only',
-                    title: 'Edit this note',
-                    'aria-label': 'Edit this note',
-                    html: ICONS.pencil,
-                    onclick: function () { startEditNote(note); },
-                }),
-                el('button', {
-                    class: 'joplin-delete-btn joplin-icon-only',
-                    title: 'Move this note to the Joplin trash',
-                    'aria-label': 'Delete this note',
-                    html: ICONS.trash,
-                    onclick: function () { confirmDeleteNote(note); },
-                }),
-            ]),
+            el('h1', { class: 'joplin-viewer-title', text: cleanTitle(note.title) || '(untitled)' }),
+            el('div', { class: 'joplin-viewer-actions' }, headerActions),
         ]);
         root.appendChild(header);
 
@@ -726,35 +771,20 @@
             ? state.folders[draft.parent_id].title
             : 'root';
 
-        // Notes-style: a single textarea where the first markdown heading
-        // line *is* the title. The user edits the title by editing line 1.
-        const editor = el('textarea', {
-            class: 'joplin-editor-body',
-            placeholder: '# Title goes here\n\nWrite your note in Markdown…',
-            spellcheck: 'true',
-            oninput: function (ev) { state.editingDraft.content = ev.target.value; },
-            onkeydown: function (ev) {
-                // Ctrl/Cmd+S to save
-                if ((ev.ctrlKey || ev.metaKey) && ev.key === 's') {
-                    ev.preventDefault();
-                    const status = root.querySelector('.joplin-editor-status');
-                    saveDraft(status);
-                }
-                // Esc to cancel
-                if (ev.key === 'Escape' && !state.saving) {
-                    cancelEdit();
-                }
-            },
-        });
-        editor.value = draft.content || '';
-
         const status = el('div', { class: 'joplin-editor-status' });
 
         const saveBtn = el('button', {
             class: 'primary',
             text: state.saving ? 'Saving…' : 'Save',
             disabled: state.saving ? 'disabled' : null,
-            onclick: function () { saveDraft(status); },
+            onclick: function () {
+                // Pull the latest content out of whichever editor surface
+                // is currently mounted (Toast UI or fallback textarea).
+                if (state.mdEditor && typeof state.mdEditor.getMarkdown === 'function') {
+                    state.editingDraft.content = state.mdEditor.getMarkdown();
+                }
+                saveDraft(status);
+            },
         });
 
         const cancelBtn = el('button', {
@@ -763,35 +793,141 @@
             onclick: function () { cancelEdit(); },
         });
 
+        // Compact header bar (title-row + actions, single line).
         root.appendChild(el('div', { class: 'joplin-editor-header' }, [
             el('div', { class: 'joplin-editor-mode' }, [
-                document.createTextNode(isNew ? 'New note in: ' : 'Editing note in: '),
+                el('span', { class: 'joplin-editor-mode-icon', text: isNew ? '✎' : '✏' }),
+                document.createTextNode(isNew ? ' New note in ' : ' Editing in '),
                 el('strong', { text: parentLabel }),
             ]),
-            el('div', { class: 'joplin-editor-actions' }, [saveBtn, cancelBtn]),
+            el('div', { class: 'joplin-editor-actions' }, [cancelBtn, saveBtn]),
         ]));
 
-        root.appendChild(el('div', {
-            class: 'joplin-editor-hint',
-            text: 'Tip: the first “# Heading” line becomes the note title. Press Ctrl+S to save, Esc to cancel.',
-        }));
-
-        root.appendChild(editor);
+        // Editor host — Toast UI mounts here directly if available; otherwise
+        // a plain <textarea> fallback is appended so the user can always edit.
+        const host = el('div', { class: 'joplin-rte-host' });
+        root.appendChild(host);
         root.appendChild(status);
 
-        // Auto-focus and place cursor in a sensible spot
+        if (window.toastui && window.toastui.Editor) {
+            try {
+                mountToastEditor(host, draft, isNew, status);
+                return;
+            } catch (e) {
+                console.warn('Joplin: Toast UI Editor init failed, using plain textarea', e);
+                host.innerHTML = '';
+            }
+        }
+
+        // -------- Plain-textarea fallback --------
+        const editor = el('textarea', {
+            class: 'joplin-editor-body',
+            placeholder: '# Title goes here\n\nWrite your note in Markdown…',
+            spellcheck: 'true',
+            oninput: function (ev) { state.editingDraft.content = ev.target.value; },
+        });
+        editor.value = draft.content || '';
+        host.appendChild(editor);
+
+        editor.addEventListener('keydown', function (ev) {
+            if ((ev.ctrlKey || ev.metaKey) && (ev.key === 's' || ev.key === 'S')) {
+                ev.preventDefault();
+                saveDraft(status);
+            }
+            if (ev.key === 'Escape' && !state.saving) {
+                cancelEdit();
+            }
+        });
         setTimeout(function () {
             editor.focus();
             if (isNew) {
-                // Highlight the placeholder title so typing replaces it
                 const start = '# '.length;
                 const end = (draft.content || '').indexOf('\n');
                 if (end > start) editor.setSelectionRange(start, end);
             } else {
-                // Place cursor at end of content for editing
                 editor.setSelectionRange(editor.value.length, editor.value.length);
             }
         }, 0);
+    }
+
+    /**
+     * Mount Toast UI Editor directly into `host`. Markdown is the source of
+     * truth (`editor.getMarkdown()`), so the existing Joplin save/sync
+     * pipeline is byte-compatible.
+     *
+     * Toast UI gives us:
+     *   - WYSIWYG mode by default (real rich-text editing surface)
+     *   - A native “Markdown” tab for power users
+     *   - Built-in toolbar: bold / italic / strike / heading / lists /
+     *     quote / link / code / image / table
+     */
+    function mountToastEditor(host, draft, isNew, statusEl) {
+        // Tear down any previous instance bound to a stale DOM node.
+        teardownEditor();
+
+        // Compact toolbar = better fit on narrow Nextcloud viewer panes.
+        const isNarrow = window.innerWidth && window.innerWidth < 900;
+        // Full toolbar — all formatting features Toast UI ships with.
+        const toolbar = isNarrow
+            ? [
+                ['heading', 'bold', 'italic', 'strike'],
+                ['hr', 'quote'],
+                ['ul', 'ol', 'task', 'indent', 'outdent'],
+                ['table', 'image', 'link'],
+                ['code', 'codeblock'],
+            ]
+            : [
+                ['heading', 'bold', 'italic', 'strike'],
+                ['hr', 'quote'],
+                ['ul', 'ol', 'task', 'indent', 'outdent'],
+                ['table', 'image', 'link'],
+                ['code', 'codeblock'],
+                ['scrollSync'],
+            ];
+
+        const editor = new window.toastui.Editor({
+            el: host,
+            // Let CSS flex give the editor its size; Toast UI will fill the host.
+            height: '100%',
+            initialValue: draft.content || '',
+            initialEditType: 'wysiwyg',     // WYSIWYG by default (per requirements)
+            previewStyle: 'vertical',
+            usageStatistics: false,
+            hideModeSwitch: true,            // WYSIWYG only — hide the Markdown tab
+            placeholder: 'Write your note here…',
+            toolbarItems: toolbar,
+            autofocus: true,
+            events: {
+                change: function () {
+                    state.editingDraft.content = editor.getMarkdown();
+                },
+            },
+        });
+        state.mdEditor = editor;
+        state.mdEditorKind = 'toast';
+
+        // Ctrl/Cmd+S → save  |  Esc → cancel — bound on the editor surface.
+        // We attach in capture phase so it wins over Toast UI's own handlers.
+        const root = host.querySelector('.toastui-editor-defaultUI') || host;
+        root.addEventListener('keydown', function (ev) {
+            if ((ev.ctrlKey || ev.metaKey) && (ev.key === 's' || ev.key === 'S')) {
+                ev.preventDefault();
+                ev.stopPropagation();
+                state.editingDraft.content = editor.getMarkdown();
+                saveDraft(statusEl);
+            } else if (ev.key === 'Escape' && !state.saving) {
+                ev.preventDefault();
+                cancelEdit();
+            }
+        }, true);
+
+        // Place focus sensibly.
+        setTimeout(function () {
+            try {
+                editor.focus();
+                editor.moveCursorToEnd();
+            } catch (_e) { /* non-fatal */ }
+        }, 30);
     }
 
     // ---------- Markdown editing helpers (toolbar actions) ----------------
@@ -989,10 +1125,27 @@
 
     function cancelEdit() {
         if (state.saving) return;
+        teardownEditor();
         state.editing = false;
         state.previewMode = false;
         state.editingDraft = null;
         render();
+    }
+
+    /** Detach the rich-text editor (if mounted) so it doesn't leak across re-renders. */
+    function teardownEditor() {
+        if (state.mdEditor) {
+            try {
+                // Toast UI Editor exposes destroy(); EasyMDE used toTextArea().
+                if (typeof state.mdEditor.destroy === 'function') {
+                    state.mdEditor.destroy();
+                } else if (typeof state.mdEditor.toTextArea === 'function') {
+                    state.mdEditor.toTextArea();
+                }
+            } catch (_e) { /* ignore */ }
+        }
+        state.mdEditor = null;
+        state.mdEditorKind = null;
     }
 
     /**
@@ -1235,6 +1388,7 @@
         promise.then(function (resp) {
             state.saving = false;
             state.editing = false;
+            teardownEditor();
             state.editingDraft = null;
             showToast(d.isNew ? 'Note created' : 'Note saved', 'success');
 
@@ -1392,7 +1546,32 @@
         if (!app.root) return;
         renderNotebooksPane(app.notebooks);
         renderNotesPane(app.list);
-        renderViewer(app.viewer);
+        // While the rich Markdown editor is active, avoid rebuilding the
+        // viewer pane on unrelated state ticks (search input, sync pill, …)
+        // — that would tear down Toast UI and lose cursor/preview state.
+        const editorMounted = !!(state.mdEditor && state.editing);
+        // Toggle pane styling: edit mode removes padding/overflow so the
+        // editor can fill the entire pane height/width.
+        if (app.viewer) {
+            app.viewer.classList.toggle('joplin-editing-mode', !!state.editing);
+        }
+        if (!editorMounted) {
+            renderViewer(app.viewer);
+        } else {
+            // Keep the Save button label / disabled state in sync with
+            // state.saving while the editor stays mounted.
+            const saveBtn = app.viewer.querySelector('.joplin-editor-actions button.primary');
+            if (saveBtn) {
+                saveBtn.textContent = state.saving ? 'Saving…' : 'Save';
+                if (state.saving) saveBtn.setAttribute('disabled', 'disabled');
+                else saveBtn.removeAttribute('disabled');
+            }
+            const cancelBtn = app.viewer.querySelector('.joplin-editor-actions button:not(.primary)');
+            if (cancelBtn) {
+                if (state.saving) cancelBtn.setAttribute('disabled', 'disabled');
+                else cancelBtn.removeAttribute('disabled');
+            }
+        }
         // Sidebar / overlay state
         app.root.classList.toggle('joplin-sidebar-open', !!state.sidebarOpen);
         app.root.classList.toggle('joplin-busy', !!(state.loading || state.deleting));

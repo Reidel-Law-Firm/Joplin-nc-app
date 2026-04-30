@@ -376,6 +376,9 @@ class JoplinIndexService {
             'created_time' => $parsed['created_time'],
             'updated_time' => $parsed['updated_time'],
             'path'         => $entry['path'],
+            // Nextcloud node id — used by the SPA to deep-link the underlying
+            // Markdown file into Nextcloud's built-in Text app via /f/<id>.
+            'file_id'      => $file->getId(),
             'mtime'        => $file->getMTime(),
         ];
     }
